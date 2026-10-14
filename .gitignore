@@ -18,3 +18,9 @@ _backup/
 
 # Release 产物（APK 通过 GitHub Release 附件分发）
 dist/
+
+# 本机取证/工具状态目录：含真实训练数据与 WebView localStorage 转储，以及各 AI 工具的本机记忆，一律不入库
+_adb_tmp/
+.commandcode/
+.trae/
+.workbuddy/
