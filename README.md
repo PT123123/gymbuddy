@@ -120,6 +120,14 @@ android-app/
 
 ---
 
+## 📚 相关文档
+
+- `docs/naming-boundaries.md` — 仓库已更名 `gymbuddy`，哪些标识能改、哪些是设备数据的存储坐标（改了就读不到旧数据了），以及迁数据的无 root 通道
+- `docs/adb-data-recovery.md` — adb 数据找回：三层数据各在哪、怎么取
+- `docs/incident-2026-10-09-midworkout-records-gone.md` — 记录消失事故的取证与复盘，v1.2.19 落盘镜像的由来
+
+---
+
 ## ⚠️ 关于「是否已编译出 APK」
 本工程在**沙盒环境**中开发，该环境**无法安装 Android SDK、也无法联网下载 Gradle/SDK**（网络策略拦截了 `dl.google.com` / `services.gradle.org`），因此**未能在此直接产出 `.apk`**。
 但工程本身是**完整、可编译**的：
