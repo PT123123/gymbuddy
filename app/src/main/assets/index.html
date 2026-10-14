@@ -345,14 +345,14 @@
 /* ============ 预设 ============ */
 const PARTS = ['胸','背','腿','肩','腹'];
 const ACTIONS = {
-  '胸':['杠铃卧推','哑铃卧推','上斜卧推','飞鸟','双杠臂屈伸'],
-  '背':['引体向上','高位下拉','杠铃划船','单臂划船','硬拉'],
-  '腿':['深蹲','半蹲','器械深蹲','腿举','箭步蹲','罗马尼亚硬拉'],
-  '肩':['哑铃推举','侧平举','前平举','俯身飞鸟','耸肩'],
-  '腹':['悬挂举腿','山羊挺身','卷腹','平板支撑','悬垂提膝'],
+  '胸':['杠铃卧推','哑铃卧推','卧推','上斜卧推','上斜杠铃卧推','上斜哑铃卧推','下斜卧推','史密斯卧推','飞鸟','哑铃飞鸟','龙门架夹胸','坐姿夹胸','蝴蝶机夹胸','器械推胸','俯卧撑','双杠臂屈伸'],
+  '背':['引体向上','高位下拉','直臂下压','杠铃划船','单臂划船','坐姿划船','器械划船','T杠划船','硬拉','山羊挺身'],
+  '腿':['深蹲','杠铃深蹲','半蹲','器械深蹲','哈克深蹲','腿举','箭步蹲','保加利亚分腿蹲','罗马尼亚硬拉','直腿硬拉','相扑硬拉','腿弯举','腿屈伸','提踵','坐姿提踵','臀桥','臀推'],
+  '肩':['哑铃推举','杠铃推举','器械推肩','阿诺德推举','侧平举','前平举','俯身飞鸟','反向飞鸟','面拉','直立划船','耸肩'],
+  '腹':['卷腹','反向卷腹','仰卧起坐','两头起','俄罗斯转体','平板支撑','侧平板支撑','悬挂举腿','悬垂提膝','健腹轮','死虫式','空中蹬车'],
 };
-const REST_OPTIONS = [30,45,60,90,120,150,180,240,300];
-const DUR_MIN_OPTIONS = [0,1,2,3,5,10,15,20,25,30];   // 倒计时「分」可选项
+const REST_OPTIONS = [30,45,60,90,120,150,180,210,240,270,300];
+const DUR_MIN_OPTIONS = [0,1,2,3,4,5,10,15,20,25,30];   // 倒计时「分」可选项
 const DUR_SEC_OPTIONS = [0,10,15,30,45];               // 倒计时「秒」可选项（含 10 秒）
 
 /* ============ 工具 ============ */
@@ -509,6 +509,10 @@ function applyChipsFoldAll(){
    已有预设的部位也跟随最近一次使用（此前固定在首次部位，换部位练就找不到动作了） */
 function learnCustomActions(){
   const builtin=builtinActionSet();
+  /* 内置覆盖自定义：与内置动作同名的预设（可能带着记错的历史部位）清掉，以内置部位为准 */
+  const n0=state.customActions.length;
+  state.customActions=state.customActions.filter(c=>!builtin.has(String(c&&c.action||'').trim()));
+  if(state.customActions.length!==n0) persist();
   const idx=new Map(state.customActions.map((c,i)=>[c.action,i]));
   const hidden=new Set(state.hiddenActions);
   const seen=new Set();
@@ -618,7 +622,7 @@ function writeDataFile(){
       if(v==null){ if(prevKeys && prevKeys[k]!=null) keys[k]=prevKeys[k]; return; }
       try{ keys[k]=JSON.parse(v); }catch(e){ keys[k]=v; }
     });
-    FitnessNative.saveDataFile(JSON.stringify({ app:'fitness-record', ver:window.APP_VERSION||'', ts:Date.now(), keys:keys }));
+    FitnessNative.saveDataFile(JSON.stringify({ app:'gymbuddy', ver:window.APP_VERSION||'', ts:Date.now(), keys:keys }));
   }catch(e){}
 }
 /* 启动兜底：localStorage 整体丢失（WebView profile 重建）或缺某个 key 时，从原生文件回填；只补不覆盖 */
@@ -871,7 +875,7 @@ function renderGroupEdit(i){
     </div>
     <div class="field-label">休息时间（秒，可手动填 / 点选预设）</div>
     <input class="inline-input" type="text" inputmode="numeric" min="0" ${fid('rest')} placeholder="180" value="${g.rest||''}" oninput="updateGroup(${i},{rest:parseInt(this.value)||0})">
-    <div class="chips" style="margin-top:8px">${REST_OPTIONS.slice(0,7).map(r=>`<span class="chip ${g.rest==r?'on':''}" onclick="updateGroup(${i},{rest:${r}})">${r}秒</span>`).join('')}</div>
+    <div class="chips" style="margin-top:8px">${REST_OPTIONS.map(r=>`<span class="chip ${g.rest==r?'on':''}" onclick="updateGroup(${i},{rest:${r}})">${r}秒</span>`).join('')}</div>
     <div class="field-label">笔记（如：好酸 / 状态不错）</div>
     <input class="inline-input" ${fid('note')} placeholder="可选" value="${g.note||''}" oninput="updateGroup(${i},{note:this.value})">
     ${noteSuggHtml}
@@ -1293,12 +1297,11 @@ function endTraining(){
   lines.push('训练时长：' + fmt(durMs));
   lines.push('组数：' + all.length + ' 组');
   all.forEach((r,i)=> lines.push((i+1) + '. ' + (r.t? r.t+' ' : '') + fmtRecordLine(r)));   // 每行带该组时间：笔记自含精确时间，后续解析无需倒推
-  /* 当日笔记区块：今天新建/编辑过的、非训练记录类笔记 */
+  /* 当日笔记区块：训练日新建/编辑过的、非训练记录类笔记（与凌晨4点截止同口径） */
   const dayNotes = notes.filter(n=>{
     const c=String(n && n.content||'');
     if(!c.trim() || c.startsWith('🏋️ 训练记录 ·')) return false;
-    const d=new Date(n.updatedAt||n.createdAt||0);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')===trainToday();
+    return trainDateOfTs(n.updatedAt||n.createdAt||0)===trainToday();
   });
   if(dayNotes.length){
     lines.push('―'.repeat(14) + ' 📝 当日笔记 ' + '―'.repeat(14));
@@ -1307,7 +1310,7 @@ function endTraining(){
   const parts = [...new Set(all.map(r=>r.part).filter(Boolean))];
   const tags = parts.length ? parts.map(p=>`#健身日记/${p}`).join(' ') : '';
   const dupMark = dupNotes.length? ' ⚠️ 今日重复导出（本条为最新，建议删除/合并旧的）' : '';
-  const text = `🏋️ 训练记录 · ${today()}` + dupMark + (tags? '\n'+tags : '') + '\n' + '='.repeat(30) + '\n' + lines.join('\n');
+  const text = `🏋️ 训练记录 · ${trainToday()}` + dupMark + (tags? '\n'+tags : '') + '\n' + '='.repeat(30) + '\n' + lines.join('\n');
   notes.unshift({ id:uid(), content:text, pinned:false, createdAt:Date.now(), updatedAt:Date.now() });
   persistNotes();
   if(dupNotes.length) setTimeout(()=>alert(`⚠️ 本次导出与今天已有的 ${dupNotes.length} 条训练记录笔记重复，已带 ⚠️ 标记。\n建议去笔记页删除或合并旧的重复笔记。`), 100);
@@ -2502,7 +2505,7 @@ function sendNote(){
 
 /* —— 笔记导入 / 导出（JSON 备份；导出走系统分享/下载，导入从文件合并，按 id 去重） —— */
 function notesExportPayload(){
-  return JSON.stringify({ app:'fitness-record', type:'notes', version:1, exportedAt:Date.now(), noteCount:notes.length, notes }, null, 2);
+  return JSON.stringify({ app:'gymbuddy', type:'notes', version:1, exportedAt:Date.now(), noteCount:notes.length, notes }, null, 2);
 }
 function exportNotesFile(){
   if(!notes.length){ alert('还没有笔记可导出'); return; }
@@ -3167,7 +3170,7 @@ function bkReady(){ return !!(bkCfg.ak && bkCfg.sk && bkCfg.bucket && window.Fit
 function buildBackupPayload(){
   const keys={};
   BACKUP_KEYS.forEach(k=>{ const v=localStorage.getItem(k); if(v!=null) keys[k]=v; });
-  return JSON.stringify({ app:'fitness-record', ver:window.APP_VERSION||'', ts:Date.now(), keys });
+  return JSON.stringify({ app:'gymbuddy', ver:window.APP_VERSION||'', ts:Date.now(), keys });
 }
 
 /* 数据变更后防抖：固定 60 秒窗口（已有待传任务不重置计时，连续操作不会无限推迟） */

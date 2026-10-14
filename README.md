@@ -43,12 +43,19 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 > 首次构建 Gradle 会自动下载（需联网）；若没有 `gradlew`，用系统 `gradle` 命令亦可。
 
+> **本地目录改名/搬家后要 `clean` 一次**：`app/build/`、`.gradle/` 里的增量缓存记的是绝对路径
+> （`merger.xml`、lint `module.xml` 都硬编码了 `...\Desktop\<旧目录名>\...`）。换路径直接构建容易报
+> 找不到源文件或沿用旧路径产物。`./gradlew clean` 或删掉 `app/build/` + `.gradle/` 重来即可，两者都是 gitignore 的构建产物。
+> 改名本身要在**关闭占用进程之后**做（IDE / Qoder 会持有工作区根目录句柄，表现为 `mv` 报 `Device or resource busy`，
+> 但目录内子目录和文件都能正常改名——此时说明是根目录被 cwd 占住，不是权限问题）。
+
 ---
 
 ## 📦 发布（GitHub Releases · Obtainium）
 
 发布渠道就是 GitHub Releases：Obtainium 以仓库为源、从 Release 资产里抓 APK 自动更新。
-资产名固定 `fitness-record-X.Y.Z.apk`（以 `.apk` 结尾，Obtainium 可识别），tag 格式 `vX.Y.Z`，说明直接用 `dist/release-notes-X.Y.Z.md` 的内容。
+资产名固定 `gymbuddy-X.Y.Z.apk`（以 `.apk` 结尾，Obtainium 可识别），tag 格式 `vX.Y.Z`，说明直接用 `dist/release-notes-X.Y.Z.md` 的内容。
+> v1.2.19 及更早的资产名是 `fitness-record-X.Y.Z.apk`（仓库当时叫 fitness-record）；已发布的 release 不回头改名，Obtainium 只抓最新资产，不影响覆盖更新。
 
 ### 发布步骤
 1. **bump 版本号**（4 处同步改）：
@@ -57,11 +64,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    - `app/build.gradle` → `versionCode 129`（主次补版本号拼接的整数）+ `versionName "1.2.9"`
    - `app/src/main/assets/index.html` 改动后记得同步根目录 `fitness-tracker.html`（两份需保持一致）
 2. **构建**：`.\gradlew.bat assembleRelease`，产物在 `app/build/outputs/apk/release/app-release.apk`
-3. **本地归档**：复制 APK 为 `dist/fitness-record-X.Y.Z.apk`，写 `dist/release-notes-X.Y.Z.md`
+3. **本地归档**：复制 APK 为 `dist/gymbuddy-X.Y.Z.apk`，写 `dist/release-notes-X.Y.Z.md`
 4. **发 GitHub Release**（Obtainium 即刻可抓到）：
    ```bash
    git tag v1.2.9 && git push origin v1.2.9
-   gh release create v1.2.9 dist/fitness-record-1.2.9.apk \
+   gh release create v1.2.9 dist/gymbuddy-1.2.9.apk \
      --title "v1.2.9" --notes-file dist/release-notes-1.2.9.md
    ```
 
