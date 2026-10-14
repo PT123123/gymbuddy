@@ -1,4 +1,4 @@
-package com.example.fitness;
+package com.gymbuddy;
 
 import android.content.Context;
 import android.graphics.Bitmap;

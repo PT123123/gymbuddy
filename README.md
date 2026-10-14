@@ -97,12 +97,19 @@ android-app/
     └── src/main/
         ├── AndroidManifest.xml                          # 权限 + Activity/Service 声明
         ├── assets/index.html                            # ← 就是那个网页（计时+记录）
-        ├── java/com/example/fitness/
+        ├── java/com/gymbuddy/
         │   ├── FitnessApp.java          # 全局单例，JS ↔ 原生桥梁
         │   ├── MainActivity.java        # WebView 加载 index.html，注册桥接
         │   ├── FitnessNativeBridge.java # @JavascriptInterface：fire() / dismiss()
         │   ├── AlarmActivity.java       # 锁屏全屏强提醒弹窗
-        │   └── OverlayService.java      # 悬浮窗（可选增强）
+        │   ├── CountdownScheduler.java  # 系统精确闹钟排期（到点广播 CountdownReceiver）
+        │   ├── CountdownService.java    # 倒计时期间前台服务保活
+        │   ├── Reminder.java            # 通知渠道 + 震动 + 声音，渠道 id `fitness_alarm`
+        │   ├── WorkoutStore.java        # 热力图数据（SharedPreferences `fitness_heatmap`）
+        │   ├── HeatmapWidgetProvider.java / HeatmapRenderer.java # 桌面 2x2 热力图
+        │   ├── CloudBackup.java         # 七牛云备份（载荷 app 字段现为 'gymbuddy'）
+        │   ├── OverlayService.java      # 悬浮窗（可选增强）
+        │   └── AddWidgetActivity.java / AlarmActionReceiver.java / WidgetPinCallbackReceiver.java
         └── res/                         # 布局 / 主题 / 图标
 ```
 

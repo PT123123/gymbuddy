@@ -1,4 +1,4 @@
-package com.example.fitness;
+package com.gymbuddy;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;

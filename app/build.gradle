@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.example.fitness'
+    namespace 'com.gymbuddy'
     compileSdk 34
 
     signingConfigs {
@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.fitness"
+        applicationId "com.gymbuddy"
         minSdk 26                 // Android 8.0+（悬浮窗/锁屏弹窗所需 API 均覆盖）
         targetSdk 34
         versionCode 139           // 与版本号 1.2.19 对应

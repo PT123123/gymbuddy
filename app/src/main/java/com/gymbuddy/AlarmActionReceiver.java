@@ -1,4 +1,4 @@
-package com.example.fitness;
+package com.gymbuddy;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -11,8 +11,8 @@ import android.content.Intent;
  */
 public class AlarmActionReceiver extends BroadcastReceiver {
 
-    public static final String ACTION_DISMISS = "com.example.fitness.ACTION_DISMISS_ALARM";
-    public static final String ACTION_SNOOZE = "com.example.fitness.ACTION_SNOOZE_ALARM";
+    public static final String ACTION_DISMISS = "com.gymbuddy.ACTION_DISMISS_ALARM";
+    public static final String ACTION_SNOOZE = "com.gymbuddy.ACTION_SNOOZE_ALARM";
 
     private static final int SNOOZE_SECONDS = 60;
 

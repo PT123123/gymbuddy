@@ -2,6 +2,8 @@
 
 适用场景：应用为 release 构建（`run-as` 不可用），设备无 root，`adb backup` 在 Android 12+ 上基本失效且用户不想全量备份。此时可以用**相同 keystore 签名的 debug 包覆盖安装**的方式，既保留应用数据，又获得 `run-as` 权限直接读取私有目录。
 
+> 本文里的包名一律保持 `com.example.fitness` 不改：那是当时取证现场的真实包名。**2026-10-15 起仓库产物已换成新包名 `com.gymbuddy`**（旧 App 仍在设备上、数据在旧包沙盒里），对新包做同类操作时把包名替换成 `com.gymbuddy` 即可，其余步骤一致。边界与迁移步骤见 `docs/naming-boundaries.md`。
+
 ## 原理
 
 - `adb install -r` 覆盖安装时，系统校验签名一致才允许替换，数据（localStorage、files/ 等）全部保留。

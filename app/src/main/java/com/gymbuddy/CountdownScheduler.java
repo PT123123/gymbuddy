@@ -1,4 +1,4 @@
-package com.example.fitness;
+package com.gymbuddy;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -12,7 +12,7 @@ import android.os.Build;
  */
 public final class CountdownScheduler {
 
-    public static final String ACTION_FIRE = "com.example.fitness.COUNTDOWN_FIRE";
+    public static final String ACTION_FIRE = "com.gymbuddy.COUNTDOWN_FIRE";
     public static final String EXTRA_REST = "rest";
     private static final int REQ_CODE = 2001; // 同一时刻只会有一个倒计时
 

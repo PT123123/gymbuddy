@@ -9,7 +9,7 @@
         android:shortcutLongLabel="@string/shortcut_add_widget_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.example.fitness"
-            android:targetClass="com.example.fitness.AddWidgetActivity" />
+            android:targetPackage="com.gymbuddy"
+            android:targetClass="com.gymbuddy.AddWidgetActivity" />
     </shortcut>
 </shortcuts>
