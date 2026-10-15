@@ -119,8 +119,6 @@ public class FitnessNativeBridge {
                    != PackageManager.PERMISSION_GRANTED) {
             runOnUi(activity::requestNotificationPermission);
         }
-        // 主动引导：锁屏关键权限（通知/全屏/后台弹出界面等）缺失时弹一次，让用户直接去系统设置开启
-        runOnUi(activity::checkReminderPermsForCountdown);
         CountdownService.start(app, restSeconds, endAtMillis);
     }
 
@@ -335,10 +333,6 @@ public class FitnessNativeBridge {
     /** 澎湃OS/小米「自启动」管理页（默认禁止，会导致杀后台后到点不提醒） */
     @JavascriptInterface
     public void openAutoStartSettings() { activity.openAutoStartSettings(); }
-
-    /** 倒计时开始时主动检查锁屏权限，缺失则弹引导（供 JS 调用） */
-    @JavascriptInterface
-    public void checkReminderPerms() { activity.checkReminderPermsForCountdown(); }
 
     private boolean hasNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

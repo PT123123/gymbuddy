@@ -38,7 +38,15 @@ public class AddWidgetActivity extends Activity {
         PendingIntent callback = PendingIntent.getBroadcast(this, 0, callbackIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        manager.requestPinAppWidget(widget, extras, callback);
+        boolean accepted = manager.requestPinAppWidget(widget, extras, callback);
+        if (!accepted) {
+            Toast.makeText(this, R.string.widget_pin_not_supported, Toast.LENGTH_LONG).show();
+        } else {
+            // Some OEM launchers accept the request but return to the home screen without
+            // showing their pin UI. Give the user a visible fallback instead of silently
+            // finishing with no widget added.
+            Toast.makeText(this, R.string.widget_pin_requested, Toast.LENGTH_LONG).show();
+        }
         finish(); // 系统接管后续的放置界面，这里立即关闭
     }
 }

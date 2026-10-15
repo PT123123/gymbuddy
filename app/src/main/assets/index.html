@@ -42,6 +42,8 @@
   .sb-nav button{ text-align:left; padding:13px 14px; border:none; background:none; color:var(--txt);
     font-size:15px; border-radius:10px; cursor:pointer; }
   .sb-nav button.on{ background:rgba(79,195,247,.12); color:var(--acc); font-weight:600; }
+  .sb-perm-warning{ width:100%; text-align:left; margin:0 0 8px; padding:11px 12px; border:1px solid rgba(239,83,80,.35);
+    border-radius:10px; background:rgba(239,83,80,.1); color:#ff8a80; font-size:13px; font-weight:600; cursor:pointer; }
   .sb-stats{ margin-top:auto; padding:14px; background:var(--card2); border-radius:12px;
     font-size:13px; color:var(--sub); line-height:1.7; }
   .sb-stats b{ color:var(--acc); }
@@ -325,6 +327,7 @@
     <div class="sb-title">🏋️ 健身搭子</div>
     <button class="tb-btn" onclick="closeSidebar()" aria-label="关闭">✕</button>
   </div>
+  <button class="sb-perm-warning" id="sb-perm-warning" style="display:none" onclick="openReminderPermissionSettings()">❗锁屏提醒权限待开启</button>
   <nav class="sb-nav">
     <button data-tab="train" onclick="goTab('train')">⏱ 训练</button>
     <button data-tab="hiit" onclick="goTab('hiit')">🔥 HIIT</button>
@@ -377,6 +380,14 @@ function today(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getM
 /* 训练日：与热力图同口径（hmLogical，凌晨0-4点归前一天） */
 function trainDateOfTs(ts){ const d=hmLogical(new Date(ts)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function trainToday(){ return trainDateOfTs(Date.now()); }
+/* 兼容旧版本凌晨记录：旧版可能把 date 记成自然日，而 ts 已能确定所属训练日。
+   若 date 与 ts 的自然日相同，说明它尚未按凌晨4点规则平移；手动改过的日期则原样保留。 */
+function recordTrainDate(r){
+  const date=String(r&&r.date||''), ts=Number(r&&r.ts)||0;
+  if(!date || !ts) return date;
+  const wall=new Date(ts), wallDate=`${wall.getFullYear()}-${String(wall.getMonth()+1).padStart(2,'0')}-${String(wall.getDate()).padStart(2,'0')}`;
+  return date===wallDate ? trainDateOfTs(ts) : date;
+}
 function nowTime(){ const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 /* 把 HH:MM 解析成今天的时间戳（兼容旧记录没有 ts 的情况） */
 function parseHMToTs(t){
@@ -651,7 +662,7 @@ function updateWorkoutElapsed(){
   const locked = (state.endedDate===trainToday());
   if(locked){
     /* 结束训练后：显示今日总结卡片（组数/时间段/时长/部位），替代走表 */
-    const tr = state.records.filter(r=>r && r.date===trainToday());
+    const tr = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
     if(!tr.length){ el.style.display='none'; return; }
     const ts=tr.map(r=>r.t).filter(Boolean).sort();
     const a=ts[0]? parseHMToTs(ts[0]) : 0, b=ts.length? parseHMToTs(ts[ts.length-1]) : 0;
@@ -1045,7 +1056,7 @@ function renderRecordSection(){
       html+=`<button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="restoreFromLog()">📥 本地日志里有 ${logMiss.length} 条记录被删除，点击找回</button>`;
     }
   }
-  const todayRecs = state.records.filter(r=>r && r.date===trainToday());
+  const todayRecs = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
   const dayLocked = (state.endedDate===trainToday());   // 结束训练后：今天记录锁定编辑（去结构化数据改）
   if(todayRecs.length===0){ html+=`<div class="empty">今天还没有记录，去做第一组吧 💪</div>`; }
   else {
@@ -1162,7 +1173,7 @@ function collectExportItems(){
     items.push({ date:trainToday(), set:i+1, t:g.t||'', rest:g.rest!=null? g.rest : Math.round(g.split/1000), part:g.part||'', action:g.action||'', reps:g.reps||'', weight:g.weight==null? '' : g.weight, note:g.note||'' });
   });
   // 导出 = 本次组别草稿 + 今天的已保存记录（不含历史日期；历史请在「结构化数据」查看）
-  state.records.filter(r=>r && r.date===trainToday()).forEach(r=> items.push({ date:r.date, set:'', t:r.t||'', rest:r.rest||0, part:r.part||'', action:r.action||'', reps:r.reps||'', weight:r.weight==null? '' : r.weight, note:r.note||'' }));
+  state.records.filter(r=>r && recordTrainDate(r)===trainToday()).forEach(r=> items.push({ date:recordTrainDate(r), set:'', t:r.t||'', rest:r.rest||0, part:r.part||'', action:r.action||'', reps:r.reps||'', weight:r.weight==null? '' : r.weight, note:r.note||'' }));
   return items;
 }
 function sortItems(items){
@@ -1269,7 +1280,7 @@ function renderExportContent(){
 }
 /* 结束训练：草稿组转入历史 → 导出「今天的全部结构化记录 + 当日笔记」到笔记页 → 清空计时器/草稿 → 锁定今天编辑 */
 function endTraining(){
-  const todayRecs = state.records.filter(r=>r && r.date===trainToday());
+  const todayRecs = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
   if(state.groups.length===0 && todayRecs.length===0){ alert('今天还没有任何记录'); return; }
   /* 重复导出检测：今天（训练日）已导出过的训练记录笔记 */
   const reTR=/^🏋️ 训练记录 ·/;
@@ -1285,7 +1296,7 @@ function endTraining(){
   });
   learnCustomActions();   // 导出的动作 → 变成动作预设
   /* 导出今天的全部结构化记录（不只本次草稿），按时间正序 */
-  const all = state.records.filter(r=>r && r.date===trainToday());
+  const all = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
   all.sort((a,b)=> String(a.t||'').localeCompare(String(b.t||'')));
   const times = all.map(r=>r.t).filter(Boolean).sort();
   const firstTs = times[0]? parseHMToTs(times[0]) : 0;
@@ -2902,7 +2913,19 @@ function closeSidebar(){ $('sidebar').classList.remove('open'); $('backdrop').cl
 function goTab(tab){ closeSidebar(); switchTab(tab); }
 function refreshSidebar(){
   const el=$('sb-stats'); if(!el) return;
+  const warning=$('sb-perm-warning');
+  if(warning){
+    let missing=false;
+    try{
+      const p=JSON.parse(window.FitnessNative&&FitnessNative.getPermissionState?FitnessNative.getPermissionState():'{}');
+      missing=!!p.native && (!p.notifications || !p.channelOk || !p.fullScreen || !p.exactAlarm || !p.battery || (p.miui && p.sdk>=23 && !p.overlay));
+    }catch(e){}
+    warning.style.display=missing?'block':'none';
+  }
   el.innerHTML=`训练 <b>${state.groups.length}</b> 组 · HIIT <b>${hiit.sessions.length}</b> 次 · 爬楼 <b>${stair.sessions.length}</b> 次 · 结构化 <b>${state.records.length}</b> 条 · 笔记 <b>${notes.length}</b> 篇`;
+}
+function openReminderPermissionSettings(){
+  try{ if(window.FitnessNative&&FitnessNative.openReminderSettings) FitnessNative.openReminderSettings(); }catch(e){}
 }
 
 /* ============ 热力图（日历月视图 + 桌面控件数据同步） ============ */

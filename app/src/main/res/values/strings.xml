@@ -6,5 +6,6 @@
     <string name="shortcut_add_widget_short">添加热力图控件</string>
     <string name="shortcut_add_widget_long">把训练热力图控件添加到桌面</string>
     <string name="widget_pin_not_supported">当前桌面不支持快捷添加，请长按桌面空白处 → 小组件 → 找到「健身搭子」手动添加</string>
+    <string name="widget_pin_requested">已请求桌面添加控件；若桌面没有出现，请长按空白处 → 小组件 → 找到「健身搭子」手动添加</string>
     <string name="widget_pin_success">训练热力图控件已添加到桌面</string>
 </resources>
