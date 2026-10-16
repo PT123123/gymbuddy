@@ -24,3 +24,7 @@ _adb_tmp/
 .commandcode/
 .trae/
 .workbuddy/
+
+# 本机设备备份与图标试跑图：里面是真实训练数据/桌面截图
+*.tar.gz
+/_ic*.png
