@@ -2994,6 +2994,7 @@ let volDays = 30;               // 折线看最近多少天
 let volUnit = 'day';            // 折线口径：'day' 每天一组数 / 'week' 每周（周一~周日）一组数
 let volWeeks = 8;               // 周视图看最近多少周
 let volParts = ['总'];           // 折线上画哪几条线：'总' 和部位名一样，都靠 chip 开关
+let volRefs = ['进阶'];          // 图上画哪几条周组数参考虚线（默认「进阶 12–20」的上限=20 那条）
 
 function hmKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 /* 训练日归属：每天截止到早上4点（凌晨0-4点练的算前一天） */
@@ -3157,6 +3158,10 @@ function hmShowDay(date){
 /* ============ 组数折线（热力图的 volume 视图） ============ */
 const VOL_PART_COLORS = { '总':'#f0f0f0', '胸':'#4fc3f7', '背':'#66bb6a', '腿':'#ffa726', '肩':'#ba68c8', '腹':'#f06292' };
 const VOL_LINE_KEYS = ['总'].concat(HM_ALL_PARTS);   // 折线上的线：总和其他部位一样，都是 chip 里点出来的
+// 每周每肌群的组数区间：文献与主流训练体系（接近力竭的正式组）常给的四个档位，虚线画的是所选档位的上限
+const VOL_REF = { '维持':{ lo:4, hi:8 }, '新手':{ lo:10, hi:14 }, '进阶':{ lo:12, hi:20 }, '高阶':{ lo:20, hi:30 } };
+const VOL_REF_KEYS = Object.keys(VOL_REF);
+const VOL_REF_COLOR = '#c9a227';   // 参考线统一暗金虚线，和数据线（白/部位色）一眼分开
 const volLineName = p=>p==='总'?(state.warmCfg.on?'正式组数':'总组数'):p;
 const volLineGet = p=>p==='总'?volDaySets:(e=>volPartSets(e&&e.parts&&e.parts[p]));
 let volResizeBound = false;
@@ -3172,6 +3177,7 @@ function setVolDays(n){ volDays=n; renderHeatmap(); }
 function setVolWeeks(n){ volWeeks=n; renderHeatmap(); }
 function setVolUnit(u){ volUnit=u; renderHeatmap(); }
 function toggleVolPart(p){ volParts = volParts.includes(p) ? volParts.filter(x=>x!==p) : volParts.concat([p]); renderHeatmap(); }
+function toggleVolRef(k){ volRefs = volRefs.includes(k) ? volRefs.filter(x=>x!==k) : volRefs.concat([k]); renderHeatmap(); }
 
 function parseSetKg(w){ const m = String(w==null?'':w).match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : 0; }
 
@@ -3316,12 +3322,18 @@ function volCard(){
     return `<button class="hm-today-btn" style="${n===cur2?'background:var(--acc);color:#001;font-weight:600':''}" onclick="${set}(${n})">${n}${week?'周':'天'}</button>`;
   };
   const partChip = p=>`<span class="chip${volParts.includes(p)?' on':''}" style="${volParts.includes(p)?'':`color:${VOL_PART_COLORS[p]}`};padding:6px 13px;font-size:13px" onclick="toggleVolPart('${p}')">${p}</span>`;
+  const refChip = k=>`<span class="chip${volRefs.includes(k)?' on':''}" style="padding:5px 11px;font-size:12px" onclick="toggleVolRef('${k}')">${k} ${VOL_REF[k].lo}–${VOL_REF[k].hi}</span>`;
   const stats = week
     ? [[shown, '区间'+(on?'正式':'总')+'组数'], [warmN, '判为热身的组数'], [trained, '完整训练周数'], [avg, '完整周平均组数'], [peak, '完整周最多']]
     : [[shown, '区间'+(on?'正式':'总')+'组数'], [warmN, '判为热身的组数'], [trained, '训练天数'], [avg, '训练日均组数'], [peak, '单日最多']];
   const warmRule = `同一动作当天以最重组为工作重量，顶进「最重组的 ${state.warmCfg.pct}%」这条线之前的轻组算热身，进线之后掉下来的算退让组仍记正式${on?'，热身已从折线扣掉，点「去掉热身组」可放回全部组':'，当前已把全部组计入'} · 这条线在 设置 → 📊 训练量 里可调 · 一条记录算一组 · HIIT 与爬楼不计入`;
+  // 虚线按「单个肌群一周」给区间，和「总」那条线不是一个量纲；开着参考线时把这个前提写到底栏，别让他照着错的尺子加组
+  const refNote = !volRefs.length ? '' : (volParts.includes('总')
+    ? ' · 但这条 20 组的尺子量不到现在这条线：它按单个肌群一周算，「总」是把几个部位加在一起的，所以要判断某个部位练够没有，单点那个部位的 chip（比如只亮「背」）再对着虚线看'
+    : ' · 现在画的是部位线，和虚线同一个量纲，线落在哪一档就能直接照着那档决定加不加组');
+  const refCal = !volRefs.length || on ? '' : ' · 「去掉热身组」关着，折线里含热身组，画出来的数比虚线那几档（只算接近力竭的正式组）偏高';
   const foot = week
-    ? `按周统计：周一到周日算一格，练三休一再练三正好铺满一周（如果你的轮回没卡在周一起点，分界会和轮回错开几周，看整体高低不受影响）。区间共 ${all} 组记录，其中 ${warmN} 组判为热身 · ${warmRule} · 本周（${cur.range}）只过了 ${doneDays} 天，累计 ${volDaySets(cur.e)} 组，还没走完画成空心点，下面「完整训练周数 / 平均 / 最多」三张卡不把本周算进去 · 点图中任意一周跳到日历那个月看逐日`
+    ? `按周统计：周一到周日算一格，练三休一再练三正好铺满一周（如果你的轮回没卡在周一起点，分界会和轮回错开几周，看整体高低不受影响）。区间共 ${all} 组记录，其中 ${warmN} 组判为热身 · ${warmRule} · 本周（${cur.range}）只过了 ${doneDays} 天，累计 ${volDaySets(cur.e)} 组，还没走完画成空心点，下面「完整训练周数 / 平均 / 最多」三张卡不把本周算进去 · 点图中任意一周跳到日历那个月看逐日 · 暗金虚线是每周单肌群的组数区间上限（维持 4–8 / 新手 10–14 / 进阶 12–20 / 高阶 20–30 组，接近力竭的正式组），虚线底下那条淡色带就是这一档的区间，默认只画「进阶 12–20」那条 20 组线，点上面「每周组数参考」那排 chip 增减 · 区间按周一到周日算，所以按天视图不画这些线${refNote}${refCal}`
     : `区间共 ${all} 组记录，其中 ${warmN} 组判为热身：${warmRule} · 只有 #健身日记/部位 标签、没有记录的日子按每部位 1 组估算，图上画成空心点 · 点击图中任意一天查看当天记录，被判热身的组会单独标出`;
   return `<div class="card">
     <div class="hm-head">
@@ -3337,6 +3349,7 @@ function volCard(){
       <span class="hm-hint">${volParts.length?'':'一条线都没选，点下面的 chip'}</span>
     </div>
     <div class="chips" style="margin-bottom:10px">${VOL_LINE_KEYS.map(partChip).join('')}<span class="chip${on?' on':''}" style="padding:6px 13px;font-size:13px" onclick="toggleVolWarm()">去掉热身组</span></div>
+    ${week?`<div class="chips" style="margin-bottom:10px;align-items:center"><span style="color:var(--sub);font-size:12px">每周组数参考</span>${VOL_REF_KEYS.map(refChip).join('')}</div>`:''}
     <div class="vol-chart" id="vol-chart"></div>
     <div class="hm-stats">
       ${stats.map(v=>`<div class="hm-stat"><b>${v[0]}</b><span>${v[1]}</span></div>`).join('')}
@@ -3358,7 +3371,9 @@ function drawVolChart(){
     .map(p=>({ name:volLineName(p), color:VOL_PART_COLORS[p]||'#888', get:volLineGet(p), tot:p==='总' }));
   const totSi = series.findIndex(s=>s.tot);
   const values = series.map(s=>w.map(x=>s.get(x.e)));
-  const maxV = values.reduce((m,arr)=>Math.max(m, arr.reduce((a,b)=>Math.max(a,b), 0)), 0);
+  const refs = week ? VOL_REF_KEYS.filter(k=>volRefs.includes(k)).map(k=>({ k, lo:VOL_REF[k].lo, hi:VOL_REF[k].hi })) : [];
+  const dataMax = values.reduce((m,arr)=>Math.max(m, arr.reduce((a,b)=>Math.max(a,b), 0)), 0);
+  const maxV = refs.reduce((m,r)=>Math.max(m, r.hi), dataMax);   // 参考线不能被裁掉，纵轴跟着抬
   const axis = volAxis(maxV);
   const W = Math.max(240, host.clientWidth || 320), H = 200;
   const pl = 28, pr = 8, pt = 10, pb = 22;
@@ -3378,6 +3393,11 @@ function drawVolChart(){
     s += `<line x1="${pl}" y1="${Y(t).toFixed(1)}" x2="${W-pr}" y2="${Y(t).toFixed(1)}" stroke="${t?'#2a2a2a':'#3a3a3a'}" stroke-width="1"/>`;
     s += `<text x="${pl-5}" y="${(Y(t)+3).toFixed(1)}" text-anchor="end" font-size="10" fill="#8a8a8a">${t}</text>`;
   }
+  refs.forEach(r=>{
+    const yTop = Y(r.hi), yBot = Y(r.lo);
+    s += `<rect class="vol-ref" x="${pl}" y="${yTop.toFixed(1)}" width="${plotW.toFixed(1)}" height="${(yBot-yTop).toFixed(1)}" fill="${VOL_REF_COLOR}" opacity=".07"><title>${r.k} ${r.lo}–${r.hi} 组/周 · 单肌群</title></rect>`;
+    s += `<line class="vol-ref" x1="${pl}" y1="${yTop.toFixed(1)}" x2="${W-pr}" y2="${yTop.toFixed(1)}" stroke="${VOL_REF_COLOR}" stroke-width="1.4" stroke-dasharray="5 4" opacity=".85"/>`;
+  });
   if(totSi>=0) s += `<path d="${line(values[totSi])} L${X(n-1).toFixed(1)} ${base} L${X(0).toFixed(1)} ${base} Z" fill="url(#volFill)"/>`;
   series.forEach((sr,si)=>{
     s += `<path d="${line(values[si])}" fill="none" stroke="${sr.color}" stroke-width="${sr.tot?2:1.6}" stroke-linejoin="round" stroke-linecap="round"/>`;
