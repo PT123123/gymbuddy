@@ -132,6 +132,7 @@ android-app/
 - `docs/naming-boundaries.md` — 仓库已更名 `gymbuddy`，哪些标识能改、哪些是设备数据的存储坐标（改了就读不到旧数据了），以及迁数据的无 root 通道
 - `docs/adb-data-recovery.md` — adb 数据找回：三层数据各在哪、怎么取
 - `docs/incident-2026-10-09-midworkout-records-gone.md` — 记录消失事故的取证与复盘，v1.2.19 落盘镜像的由来
+- `docs/volume-warmup-rule.md` — 组数折线怎么判热身组（最重组 × 70% 那条线）、按周口径、设置里能调什么、阈值拿真实记录怎么校准的
 
 ---
 

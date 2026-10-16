@@ -42,6 +42,8 @@
   .sb-nav button{ text-align:left; padding:13px 14px; border:none; background:none; color:var(--txt);
     font-size:15px; border-radius:10px; cursor:pointer; }
   .sb-nav button.on{ background:rgba(79,195,247,.12); color:var(--acc); font-weight:600; }
+  .sb-perm-warning{ width:100%; text-align:left; margin:0 0 8px; padding:11px 12px; border:1px solid rgba(239,83,80,.35);
+    border-radius:10px; background:rgba(239,83,80,.1); color:#ff8a80; font-size:13px; font-weight:600; cursor:pointer; }
   .sb-stats{ margin-top:auto; padding:14px; background:var(--card2); border-radius:12px;
     font-size:13px; color:var(--sub); line-height:1.7; }
   .sb-stats b{ color:var(--acc); }
@@ -311,6 +313,12 @@
   .hm-stat b{ display:block; font-size:20px; color:var(--acc); }
   .hm-stat span{ font-size:12px; color:var(--sub); }
   .hm-streak{ background:rgba(79,195,247,.08); border:1px solid rgba(79,195,247,.3); color:var(--acc); border-radius:12px; padding:10px 14px; margin-top:12px; text-align:center; font-size:14px; }
+
+  /* 热力图视图切换 + 组数折线（volume） */
+  .vol-chart{ position:relative; }
+  .vol-chart svg{ display:block; }
+  .vol-hit{ fill:transparent; cursor:pointer; }
+  .vol-foot{ margin-top:12px; color:var(--sub); font-size:12px; }
 </style>
 </head>
 <body>
@@ -325,6 +333,7 @@
     <div class="sb-title">🏋️ 健身搭子</div>
     <button class="tb-btn" onclick="closeSidebar()" aria-label="关闭">✕</button>
   </div>
+  <button class="sb-perm-warning" id="sb-perm-warning" style="display:none" onclick="openReminderPermissionSettings()">❗锁屏提醒权限待开启</button>
   <nav class="sb-nav">
     <button data-tab="train" onclick="goTab('train')">⏱ 训练</button>
     <button data-tab="hiit" onclick="goTab('hiit')">🔥 HIIT</button>
@@ -377,6 +386,14 @@ function today(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getM
 /* 训练日：与热力图同口径（hmLogical，凌晨0-4点归前一天） */
 function trainDateOfTs(ts){ const d=hmLogical(new Date(ts)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function trainToday(){ return trainDateOfTs(Date.now()); }
+/* 兼容旧版本凌晨记录：旧版可能把 date 记成自然日，而 ts 已能确定所属训练日。
+   若 date 与 ts 的自然日相同，说明它尚未按凌晨4点规则平移；手动改过的日期则原样保留。 */
+function recordTrainDate(r){
+  const date=String(r&&r.date||''), ts=Number(r&&r.ts)||0;
+  if(!date || !ts) return date;
+  const wall=new Date(ts), wallDate=`${wall.getFullYear()}-${String(wall.getMonth()+1).padStart(2,'0')}-${String(wall.getDate()).padStart(2,'0')}`;
+  return date===wallDate ? trainDateOfTs(ts) : date;
+}
 function nowTime(){ const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 /* 把 HH:MM 解析成今天的时间戳（兼容旧记录没有 ts 的情况） */
 function parseHMToTs(t){
@@ -557,6 +574,7 @@ let state = {
   customActions:[],   // 自定义动作预设 {part,action}：手动输入过的动作自动学习
   hiddenActions:[],   // 已在设置页删除的动作（不再自动学习回来）
   exportCfg: { order:['date','time','set','part','action','reps','weight','rest','note'], off:[], delim:'comma', header:true }, // 导出记录格式：字段顺序 + 分隔符
+  warmCfg: { on:true, pct:70, guard:true },  // 组数折线的热身判定：是否扣掉 / 工作重量线(顶重的 %) / 冲重护栏
 };
 let showManual = false;
 let recDraft = { part:'', action:'', rest:60, reps:'', weight:'', note:'', t:'' };
@@ -576,6 +594,7 @@ function load(){ try{ const raw=localStorage.getItem(LS);
   if(d.recDraft) recDraft=Object.assign(recDraft, d.recDraft);
   if(d.autoRest!=null) state.autoRest=!!d.autoRest;
   if(d.exportCfg) state.exportCfg=sanitizeExportCfg(d.exportCfg);
+  if(d.warmCfg) state.warmCfg=sanitizeWarmCfg(d.warmCfg);
   if(d.workoutStartTs) state.workoutStartTs=d.workoutStartTs;
   if(d.endedDate) state.endedDate=d.endedDate;
   // 恢复上次选择的倒计时时长（空闲态，倒计时回到完整时长）
@@ -592,7 +611,7 @@ function load(){ try{ const raw=localStorage.getItem(LS);
   try{ const raw=localStorage.getItem(LS); if(raw) localStorage.setItem('fitness_records_v5_prev', raw); }catch(_){}
 } }
 function persist(){ if(!_storageHealthy) return;   // 存储异常时放弃写回，静默保留旧记录
-  const json = JSON.stringify({records:state.records, groups:state.groups, workoutStartTs:state.workoutStartTs, endedDate:state.endedDate, defaults:groupDefaults, showManual, recDraft, cdTotal:state.cdTotal, autoRest:state.autoRest, exportCfg:state.exportCfg, customActions:state.customActions, hiddenActions:state.hiddenActions});
+  const json = JSON.stringify({records:state.records, groups:state.groups, workoutStartTs:state.workoutStartTs, endedDate:state.endedDate, defaults:groupDefaults, showManual, recDraft, cdTotal:state.cdTotal, autoRest:state.autoRest, exportCfg:state.exportCfg, warmCfg:state.warmCfg, customActions:state.customActions, hiddenActions:state.hiddenActions});
   localStorage.setItem(LS, json);
   syncDataFile();
   syncHeatmap(); syncWorkoutLog(); scheduleCloudBackup(); }
@@ -651,7 +670,7 @@ function updateWorkoutElapsed(){
   const locked = (state.endedDate===trainToday());
   if(locked){
     /* 结束训练后：显示今日总结卡片（组数/时间段/时长/部位），替代走表 */
-    const tr = state.records.filter(r=>r && r.date===trainToday());
+    const tr = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
     if(!tr.length){ el.style.display='none'; return; }
     const ts=tr.map(r=>r.t).filter(Boolean).sort();
     const a=ts[0]? parseHMToTs(ts[0]) : 0, b=ts.length? parseHMToTs(ts[ts.length-1]) : 0;
@@ -1045,7 +1064,7 @@ function renderRecordSection(){
       html+=`<button class="btn btn-primary" style="width:100%;margin-bottom:10px" onclick="restoreFromLog()">📥 本地日志里有 ${logMiss.length} 条记录被删除，点击找回</button>`;
     }
   }
-  const todayRecs = state.records.filter(r=>r && r.date===trainToday());
+  const todayRecs = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
   const dayLocked = (state.endedDate===trainToday());   // 结束训练后：今天记录锁定编辑（去结构化数据改）
   if(todayRecs.length===0){ html+=`<div class="empty">今天还没有记录，去做第一组吧 💪</div>`; }
   else {
@@ -1162,7 +1181,7 @@ function collectExportItems(){
     items.push({ date:trainToday(), set:i+1, t:g.t||'', rest:g.rest!=null? g.rest : Math.round(g.split/1000), part:g.part||'', action:g.action||'', reps:g.reps||'', weight:g.weight==null? '' : g.weight, note:g.note||'' });
   });
   // 导出 = 本次组别草稿 + 今天的已保存记录（不含历史日期；历史请在「结构化数据」查看）
-  state.records.filter(r=>r && r.date===trainToday()).forEach(r=> items.push({ date:r.date, set:'', t:r.t||'', rest:r.rest||0, part:r.part||'', action:r.action||'', reps:r.reps||'', weight:r.weight==null? '' : r.weight, note:r.note||'' }));
+  state.records.filter(r=>r && recordTrainDate(r)===trainToday()).forEach(r=> items.push({ date:recordTrainDate(r), set:'', t:r.t||'', rest:r.rest||0, part:r.part||'', action:r.action||'', reps:r.reps||'', weight:r.weight==null? '' : r.weight, note:r.note||'' }));
   return items;
 }
 function sortItems(items){
@@ -1227,6 +1246,15 @@ function sanitizeExportCfg(c){
     header: c.header!==false
   };
 }
+/* 热身判定参数清洗：线只能取 50~90 的 5 的倍数，越界或脏值一律回到默认 */
+const WARM_PCT_MIN = 50, WARM_PCT_MAX = 90;
+function sanitizeWarmCfg(c){
+  c=c||{};
+  let pct=Math.round(Number(c.pct));
+  if(!isFinite(pct)) pct=70;
+  pct=Math.min(WARM_PCT_MAX, Math.max(WARM_PCT_MIN, Math.round(pct/5)*5));
+  return { on:c.on!==false, pct, guard:c.guard!==false };
+}
 function resolveDelim(cfg){
   cfg=cfg||state.exportCfg;
   const opt=DELIM_OPTIONS.find(o=>o.k===cfg.delim);
@@ -1269,7 +1297,7 @@ function renderExportContent(){
 }
 /* 结束训练：草稿组转入历史 → 导出「今天的全部结构化记录 + 当日笔记」到笔记页 → 清空计时器/草稿 → 锁定今天编辑 */
 function endTraining(){
-  const todayRecs = state.records.filter(r=>r && r.date===trainToday());
+  const todayRecs = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
   if(state.groups.length===0 && todayRecs.length===0){ alert('今天还没有任何记录'); return; }
   /* 重复导出检测：今天（训练日）已导出过的训练记录笔记 */
   const reTR=/^🏋️ 训练记录 ·/;
@@ -1285,7 +1313,7 @@ function endTraining(){
   });
   learnCustomActions();   // 导出的动作 → 变成动作预设
   /* 导出今天的全部结构化记录（不只本次草稿），按时间正序 */
-  const all = state.records.filter(r=>r && r.date===trainToday());
+  const all = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
   all.sort((a,b)=> String(a.t||'').localeCompare(String(b.t||'')));
   const times = all.map(r=>r.t).filter(Boolean).sort();
   const firstTs = times[0]? parseHMToTs(times[0]) : 0;
@@ -1883,11 +1911,13 @@ function renderSettings(){
   const kwCloud='云备份 备份 恢复 七牛 bucket 空间 密钥 AccessKey SecretKey 区域 上传 下载 域名 自动备份 立即备份 AK SK';
   const kwHelp='帮助 常见问题 为什么 没有提醒 不提醒 排查 前台服务 勿扰';
   const kwActions='动作预设 预设 动作 新增 改名 删除 部位 学习 '+ state.customActions.map(c=>c.action).join(' ') +' '+ Object.values(ACTIONS).flat().join(' ');
+  const kwVolume='训练量 组数 折线 曲线 volume 热身 正式组 爬坡 工作重量 判定 线 比例 阈值 退让 递减 冲重 护栏 卧推 深蹲';
   const visRemindSubs = q ? (hit(kwPerm)||hit(kwSound)) : (setTab==='remind');
   const visExport = q ? hit(kwExport) : (setTab==='export');
   const visCloud = q ? hit(kwCloud) : (setTab==='export');
   const visHelp = q ? hit(kwHelp) : (setTab==='remind');
   const visActions = q ? hit(kwActions) : (setTab==='actions');
+  const visVolume = q ? hit(kwVolume) : (setTab==='volume');
   const subSt = kw => (q && !hit(kw)) ? ' style="display:none"' : '';
   const subCss = kw => (q && !hit(kw)) ? ';display:none' : '';
   let html=`<h2>⚙ 设置</h2>
@@ -1896,6 +1926,7 @@ function renderSettings(){
       <span class="chip ${setTab==='remind'?'on':''}" onclick="setSetTab('remind')">🔔 提醒</span>
       <span class="chip ${setTab==='export'?'on':''}" onclick="setSetTab('export')">📤 导出</span>
       <span class="chip ${setTab==='actions'?'on':''}" onclick="setSetTab('actions')">🎯 动作预设</span>
+      <span class="chip ${setTab==='volume'?'on':''}" onclick="setSetTab('volume')">📊 训练量</span>
     </div>`;
   if(visRemindSubs){
   html+=`<div class="card" style="margin-top:12px">
@@ -2060,7 +2091,40 @@ function renderSettings(){
       ${renderActionPresetList()}
     </div>`;
   }
-  if(q && !visRemindSubs && !visHelp && !visExport && !visCloud && !visActions){
+  if(visVolume){
+  const wa=analyzeWarmups();
+  const endD=hmLogical(new Date());
+  const cut=hmKey(new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()-29));
+  const inWin=wa.hits.filter(h=>h.date>=cut);
+  const nWin=inWin.reduce((s,h)=>s+h.warmKgs.length,0);
+  const nAll=wa.hits.reduce((s,h)=>s+h.warmKgs.length,0);
+  html+=`<div class="card">
+    <div${subSt(kwVolume)}>
+      <div class="field-label">组数曲线口径 <span style="color:var(--sub);font-size:12px">（热力图 → 📈 组数曲线 按这套参数数正式组）</span></div>
+      <div style="margin-top:8px;font-size:14px">
+        <label><input type="checkbox" data-fid="warm-on" ${state.warmCfg.on?'checked':''} onchange="setWarmOn(this.checked)"> 折线只数正式组，扣掉热身（爬坡）组</label>
+      </div>
+      <div class="field-label" style="font-size:12px;color:var(--sub);margin-top:12px">工作重量线：一个组低于「当天该动作最重组 × 这条线」就算热身</div>
+      <div class="chips">
+        ${[50,55,60,65,70,75,80,85,90].map(p=>`<span class="chip ${state.warmCfg.pct===p?'on':''}" onclick="setWarmPct(${p})">${p}%</span>`).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:14px">
+        <label><input type="checkbox" data-fid="warm-guard" ${state.warmCfg.guard?'checked':''} onchange="setWarmGuard(this.checked)"> 冲重护栏：同一重量做满至少两组、最后单独顶更重（35 35 35 40 那种），前面都算正式组</label>
+      </div>
+      <div class="hm-stats" style="margin-top:14px">
+        <div class="hm-stat"><b>${nWin}</b><span>近 30 天判为热身</span></div>
+        <div class="hm-stat"><b>${nAll}</b><span>全部记录判为热身</span></div>
+        <div class="hm-stat"><b>${wa.spared}</b><span>护栏免扣</span></div>
+      </div>
+      ${inWin.length ? `<div class="field-label" style="font-size:12px;color:var(--sub);margin-top:12px">按当前这条线，近 30 天会扣掉这些组（改线立刻跟着变）</div>`
+        + inWin.slice(0,10).map(h=>`<div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--sub);padding:4px 0;border-bottom:1px solid var(--line)"><span>${h.date.slice(5)} · ${escHtml(h.action)}</span><span>最重 ${h.top}kg，扣 ${h.warmKgs.map(k=>k+'kg').join('、')}</span></div>`).join('')
+        + (inWin.length>10?`<div style="font-size:12px;color:var(--sub);margin-top:6px">…另有 ${inWin.length-10} 个动作组</div>`:'')
+        : `<div style="font-size:12px;color:var(--sub);margin-top:12px">近 30 天没有组被判为热身${nAll? '（更早的记录里有 '+nAll+' 组）':''}</div>`}
+      <div style="font-size:12px;color:var(--sub);margin-top:10px;line-height:1.7">判定只看同一个训练日里的同一个动作；进过这条线之后掉下来的算退让组，仍记正式组。没填重量的 ${wa.skipped} 组（徒手 / 自重）不参与判定，一律算正式组。</div>
+    </div>
+  </div>`;
+  }
+  if(q && !visRemindSubs && !visHelp && !visExport && !visCloud && !visActions && !visVolume){
     html+=`<div class="empty" style="margin-top:16px">没有匹配「${escHtml(setQuery)}」的设置项</div>`;
   }
   $('app').innerHTML=html;
@@ -2128,6 +2192,9 @@ function setSoundMode(m){
 function setDelim(k){ state.exportCfg.delim=k; persist(); renderSettings(); }
 function setCustomDelim(v){ state.exportCfg.custom=v; persist(); }
 function setHeader(on){ state.exportCfg.header=!!on; persist(); renderSettings(); }
+function setWarmOn(v){ state.warmCfg.on=!!v; persist(); renderSettings(); }
+function setWarmGuard(v){ state.warmCfg.guard=!!v; persist(); renderSettings(); }
+function setWarmPct(p){ state.warmCfg=sanitizeWarmCfg(Object.assign({}, state.warmCfg, {pct:p})); persist(); renderSettings(); }
 function toggleField(k){
   const off=state.exportCfg.off;
   const i=off.indexOf(k);
@@ -2902,7 +2969,19 @@ function closeSidebar(){ $('sidebar').classList.remove('open'); $('backdrop').cl
 function goTab(tab){ closeSidebar(); switchTab(tab); }
 function refreshSidebar(){
   const el=$('sb-stats'); if(!el) return;
+  const warning=$('sb-perm-warning');
+  if(warning){
+    let missing=false;
+    try{
+      const p=JSON.parse(window.FitnessNative&&FitnessNative.getPermissionState?FitnessNative.getPermissionState():'{}');
+      missing=!!p.native && (!p.notifications || !p.channelOk || !p.fullScreen || !p.exactAlarm || !p.battery || (p.miui && p.sdk>=23 && !p.overlay));
+    }catch(e){}
+    warning.style.display=missing?'block':'none';
+  }
   el.innerHTML=`训练 <b>${state.groups.length}</b> 组 · HIIT <b>${hiit.sessions.length}</b> 次 · 爬楼 <b>${stair.sessions.length}</b> 次 · 结构化 <b>${state.records.length}</b> 条 · 笔记 <b>${notes.length}</b> 篇`;
+}
+function openReminderPermissionSettings(){
+  try{ if(window.FitnessNative&&FitnessNative.openReminderSettings) FitnessNative.openReminderSettings(); }catch(e){}
 }
 
 /* ============ 热力图（日历月视图 + 桌面控件数据同步） ============ */
@@ -2910,6 +2989,11 @@ const HM_MAIN = ['胸','背','腿'];
 const HM_COLORS = { '胸':'#4fc3f7', '背':'#66bb6a', '腿':'#ffa726' };
 let hmMonth = new Date();       // 热力图当前展示的月份
 let lastHmSync = '';            // 最近一次已同步给原生的映射串（内容没变就不重复写）
+let hmView = 'cal';             // 热力图视图：'cal' 日历 / 'volume' 组数折线
+let volDays = 30;               // 折线看最近多少天
+let volUnit = 'day';            // 折线口径：'day' 每天一组数 / 'week' 每周（周一~周日）一组数
+let volWeeks = 8;               // 周视图看最近多少周
+let volParts = ['总'];           // 折线上画哪几条线：'总' 和部位名一样，都靠 chip 开关
 
 function hmKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 /* 训练日归属：每天截止到早上4点（凌晨0-4点练的算前一天） */
@@ -2963,6 +3047,11 @@ function hmStreak(dayMap){
 
 function renderHeatmap(){
   state.tab='heatmap';
+  if(hmView==='volume'){
+    $('app').innerHTML=`<div class="section-title">📅 训练热力图</div>${hmViewToggle()}${volCard()}`;
+    drawVolChart();
+    return;
+  }
   const y=hmMonth.getFullYear(), m=hmMonth.getMonth();
   const dayMap=buildDayMap();
   const daysIn=hmDaysInMonth(y,m);
@@ -2981,7 +3070,7 @@ function renderHeatmap(){
   }
   const streak=hmStreak(dayMap);
 
-  let html=`<div class="section-title">📅 训练热力图</div>
+  let html=`<div class="section-title">📅 训练热力图</div>${hmViewToggle()}
   <div class="card">
     <div class="hm-head">
       <div class="hm-title">${y}年${m+1}月</div>
@@ -3042,7 +3131,9 @@ function hmShowDay(date){
     const d=hmLogical(n.createdAt);
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')===date;
   }).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
-  const dayRecs=state.records.filter(r=>r && r.date===date).sort((a,b)=>(a.t||'').localeCompare(b.t||''));
+  const warm=splitWarmups();
+  const dayRecs=state.records.filter(r=>r && recordTrainDate(r)===date).sort((a,b)=>(a.t||'').localeCompare(b.t||''));
+  const warmRecs=dayRecs.filter(r=>warm.has(r.id)).length;
   if(!dayNotes.length && !dayRecs.length){ alert('这一天没有健身笔记或训练记录'); return; }
   const noteLines=dayNotes.map(n=>{
     const dots=noteParts(n).map(p=>`<span class="hm-dot-s" style="background:${HM_COLORS[p]||'#888'}"></span>`).join('');
@@ -3051,15 +3142,275 @@ function hmShowDay(date){
     </div>`;
   }).join('');
   const recLines=dayRecs.map(r=>{
+    const isWarm=warm.has(r.id);
     const dot=(r.part && HM_COLORS[r.part])? `<span class="hm-dot-s" style="background:${HM_COLORS[r.part]}"></span>` : '';
-    return `<div class="hist-item"><span class="h-time">${r.t||''}</span><span class="h-body">${escHtml(fmtRecordLine(r))}</span><span style="margin-left:6px">${dot}</span></div>`;
+    return `<div class="hist-item"${isWarm?' style="opacity:.5"':''}><span class="h-time">${r.t||''}</span><span class="h-body">${isWarm?'<span class="h-tag">热身</span>':''}${escHtml(fmtRecordLine(r))}</span><span style="margin-left:6px">${dot}</span></div>`;
   }).join('');
   const secLabel=t=>`<div class="field-label" style="padding:4px 12px 0;font-size:12px;color:var(--sub)">${t}</div>`;
   const body=(noteLines? secLabel('健身笔记')+noteLines : '') + (recLines? secLabel('训练记录')+recLines : '');
-  const title=[dayNotes.length? dayNotes.length+' 篇笔记':'', dayRecs.length? dayRecs.length+' 组记录':''].filter(Boolean).join(' · ');
+  const title=[dayNotes.length? dayNotes.length+' 篇笔记':'', dayRecs.length? dayRecs.length+' 组记录'+(warmRecs? `（正式 ${dayRecs.length-warmRecs}）`:''):''].filter(Boolean).join(' · ');
   const el=$('action-sheet');
   el.innerHTML=`<div class="as-head"><div class="as-title">📅 ${date} · ${title}</div></div><div style="max-height:60vh;overflow-y:auto">${body}</div><button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="closeNoteSheet()">关闭</button>`;
   el.classList.add('show'); $('sheet-mask').classList.add('show');
+}
+
+/* ============ 组数折线（热力图的 volume 视图） ============ */
+const VOL_PART_COLORS = { '总':'#f0f0f0', '胸':'#4fc3f7', '背':'#66bb6a', '腿':'#ffa726', '肩':'#ba68c8', '腹':'#f06292' };
+const VOL_LINE_KEYS = ['总'].concat(HM_ALL_PARTS);   // 折线上的线：总和其他部位一样，都是 chip 里点出来的
+const volLineName = p=>p==='总'?(state.warmCfg.on?'正式组数':'总组数'):p;
+const volLineGet = p=>p==='总'?volDaySets:(e=>volPartSets(e&&e.parts&&e.parts[p]));
+let volResizeBound = false;
+
+function hmViewToggle(){
+  return `<div class="mode-toggle">
+    <button class="${hmView==='cal'?'on':''}" onclick="setHmView('cal')">📅 日历</button>
+    <button class="${hmView==='volume'?'on':''}" onclick="setHmView('volume')">📈 组数曲线</button>
+  </div>`;
+}
+function setHmView(v){ hmView=v; renderHeatmap(); }
+function setVolDays(n){ volDays=n; renderHeatmap(); }
+function setVolWeeks(n){ volWeeks=n; renderHeatmap(); }
+function setVolUnit(u){ volUnit=u; renderHeatmap(); }
+function toggleVolPart(p){ volParts = volParts.includes(p) ? volParts.filter(x=>x!==p) : volParts.concat([p]); renderHeatmap(); }
+
+function parseSetKg(w){ const m = String(w==null?'':w).match(/\d+(\.\d+)?/); return m ? parseFloat(m[0]) : 0; }
+
+/* 热身（爬坡）组判定：同一训练日、同一动作，按做组时间排序，把当天最重组当作工作重量，
+   在有一组顶进「≥最重组 × warmCfg.pct%」这条线之前的轻组算热身（卧推做组 60-70kg 时前面的 40kg 就是这么认的）；
+   一旦进过这条线，后面再掉下来的算退让组/递减组，仍记正式组。
+   没重量或没动作名的不判（一律当正式组），所以徒手/自重训练不会被误扣。
+   返回 {warm:判为热身的 id 集合, hits:逐动作组的扣组明细, spared:被护栏免扣的组数, skipped:没重量没法判的组数} */
+function analyzeWarmups(){
+  const cfg=state.warmCfg, warm = new Set(), byAction = {}, hits = [];
+  let spared = 0, skipped = 0;
+  state.records.forEach(r=>{
+    if(!r || !r.id) return;
+    const d = recordTrainDate(r);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d||''))) return;
+    const kg = parseSetKg(r.weight), act = String(r.action||'').trim();
+    if(!act) return;
+    if(!kg){ skipped++; return; }
+    (byAction[d+'|'+act] || (byAction[d+'|'+act] = [])).push({ r, kg });
+  });
+  Object.keys(byAction).forEach(k=>{
+    const list = byAction[k];
+    list.sort((a,b)=>((a.r.ts||0)-(b.r.ts||0)) || String(a.r.t||'').localeCompare(String(b.r.t||'')));
+    const kgList = list.map(x=>x.kg);
+    const top = Math.max.apply(null, kgList);
+    const firstTop = list.findIndex(x=>x.kg===top);
+    // 同一重量做满至少两组、最后单独顶一个更重的重量：这是冲重组，前面那些是正式组，不当热身
+    if(cfg.guard && firstTop >= 2 && firstTop === list.length-1 && new Set(kgList.slice(0, firstTop)).size === 1){
+      const line = top * cfg.pct/100;
+      spared += kgList.filter((x,i)=> i < firstTop && x < line).length;
+      return;
+    }
+    const line = top * cfg.pct/100;
+    const wk = [];
+    for(let i=0; i<list.length; i++){ if(list[i].kg >= line) break; warm.add(list[i].r.id); wk.push(list[i].kg); }
+    if(wk.length) hits.push({ date:k.split('|')[0], action:k.split('|')[1], top, line, warmKgs:wk });
+  });
+  hits.sort((a,b)=> b.date.localeCompare(a.date) || b.warmKgs.length - a.warmKgs.length);
+  return { warm, hits, spared, skipped };
+}
+function splitWarmups(){ return analyzeWarmups().warm; }
+
+/* 每天练了几组：一条结构化记录 = 一组（按 recordTrainDate 归训练日，与热力图同口径）。
+   total 全部组，work 去掉热身后的正式组，部位同样分两份计。
+   只有笔记标签、当天没有记录的日子按「每个部位 1 组」估并标 approx——标签在一条笔记里会去重，看不出真实组数 */
+function buildVolumeMap(warm){
+  const map = {};
+  const ensure = k => map[k] || (map[k] = { total:0, work:0, parts:{}, approx:false });
+  state.records.forEach(r=>{
+    if(!r) return;
+    const d = recordTrainDate(r);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d||''))) return;
+    const e = ensure(d); e.total++;
+    const isWarm = !!(warm && warm.has(r.id));
+    if(!isWarm) e.work++;
+    if(HM_ALL_PARTS.includes(r.part)){
+      const p = e.parts[r.part] || (e.parts[r.part] = { all:0, work:0 });
+      p.all++; if(!isWarm) p.work++;
+    }
+  });
+  notes.forEach(n=>{
+    if(!n || !n.createdAt) return;
+    const parts = noteParts(n);
+    if(!parts.length) return;
+    const d = hmKey(hmLogical(n.createdAt));
+    if(map[d]) return;                       // 当天有记录就以记录为准，笔记不重复计数
+    const e = ensure(d); e.approx = true;
+    parts.forEach(p=>{ e.parts[p] = { all:1, work:1 }; e.total++; e.work++; });
+  });
+  return map;
+}
+const volDaySets = e => !e ? 0 : (state.warmCfg.on ? e.work : e.total);
+const volPartSets = c => !c ? 0 : (state.warmCfg.on ? c.work : c.all);
+
+/* 折线窗口：到今天为止的最近 volDays 天（含没练的 0 组日子，断点才能看出来） */
+function volWindow(map){
+  const end = hmLogical(new Date());
+  const arr = [];
+  for(let i=volDays-1; i>=0; i--){
+    const d = new Date(end.getFullYear(), end.getMonth(), end.getDate()-i);
+    arr.push({ key:hmKey(d), label:(d.getMonth()+1)+'/'+d.getDate(), e:map[hmKey(d)] });
+  }
+  return arr;
+}
+
+/* 周窗口：周一为一周起点（和日历视图同一列口径），练三休一再练三正好铺满一周。
+   把 7 天的组数并成与「天」同形的 entry，折线取值函数 volDaySets/volPartSets 就能原样复用。
+   本周还没过完标 partial（画空心点），整周只有笔记标签、没有结构化记录的标 approx（也是空心） */
+function volWeekWindow(map){
+  const end = hmLogical(new Date());
+  const thisMonday = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  thisMonday.setDate(thisMonday.getDate() - ((thisMonday.getDay()+6)%7));
+  const arr = [];
+  for(let i=volWeeks-1; i>=0; i--){
+    const mon = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate()-7*i);
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+6);
+    const e = { total:0, work:0, parts:{}, approx:false, partial:i===0 };
+    let hasRec = false, hasApprox = false;
+    for(let k=0; k<7; k++){
+      const day = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate()+k);
+      const d = map[hmKey(day)]; if(!d) continue;
+      e.total += d.total; e.work += d.work;
+      if(d.approx) hasApprox = true; else hasRec = true;
+      Object.keys(d.parts).forEach(p=>{
+        const t = e.parts[p] || (e.parts[p] = { all:0, work:0 });
+        t.all += d.parts[p].all; t.work += d.parts[p].work;
+      });
+    }
+    e.approx = hasApprox && !hasRec;
+    arr.push({ key:hmKey(mon), label: i===0 ? '本周' : (mon.getMonth()+1)+'/'+mon.getDate(),
+      range:(mon.getMonth()+1)+'/'+mon.getDate()+'~'+(sun.getMonth()+1)+'/'+sun.getDate(), e });
+  }
+  return arr;
+}
+function volRows(map){ return volUnit==='week' ? volWeekWindow(map) : volWindow(map); }
+
+/* 纵轴：4 格，刻度取整 */
+function volAxis(max){
+  const step = Math.max(1, Math.ceil(max/4));
+  return { step, top: step*4 };
+}
+
+function toggleVolWarm(){ state.warmCfg.on = !state.warmCfg.on; persist(); renderHeatmap(); }
+
+function volCard(){
+  const week = volUnit==='week', on = state.warmCfg.on;
+  const map = buildVolumeMap(splitWarmups());
+  const w = week ? volWeekWindow(map) : volWindow(map);
+  const all = w.reduce((s,x)=>s+((x.e&&x.e.total)||0), 0);
+  const warmN = all - w.reduce((s,x)=>s+((x.e&&x.e.work)||0), 0);
+  const shown = on ? all-warmN : all;
+  const cur = w[w.length-1];
+  const doneDays = ((hmLogical(new Date()).getDay()+6)%7)+1;   // 本周已过几天（含今天）
+  // 周口径的统计卡只认走完的周：把只练了 4 天的本周混进平均，等于自己给自己判个低量（按天时 full 就是整窗）
+  const full = week ? w.slice(0,-1) : w;
+  const fullShown = full.reduce((s,x)=>s+volDaySets(x.e), 0);
+  const trained = full.filter(x=>volDaySets(x.e)>0).length;
+  const peak = full.reduce((m,x)=>Math.max(m, volDaySets(x.e)), 0);
+  const avg = trained ? (fullShown/trained).toFixed(1) : '0';
+  const rangeBtn = n=>{
+    const cur2 = week ? volWeeks : volDays, set = week ? 'setVolWeeks' : 'setVolDays';
+    return `<button class="hm-today-btn" style="${n===cur2?'background:var(--acc);color:#001;font-weight:600':''}" onclick="${set}(${n})">${n}${week?'周':'天'}</button>`;
+  };
+  const partChip = p=>`<span class="chip${volParts.includes(p)?' on':''}" style="${volParts.includes(p)?'':`color:${VOL_PART_COLORS[p]}`};padding:6px 13px;font-size:13px" onclick="toggleVolPart('${p}')">${p}</span>`;
+  const stats = week
+    ? [[shown, '区间'+(on?'正式':'总')+'组数'], [warmN, '判为热身的组数'], [trained, '完整训练周数'], [avg, '完整周平均组数'], [peak, '完整周最多']]
+    : [[shown, '区间'+(on?'正式':'总')+'组数'], [warmN, '判为热身的组数'], [trained, '训练天数'], [avg, '训练日均组数'], [peak, '单日最多']];
+  const warmRule = `同一动作当天以最重组为工作重量，顶进「最重组的 ${state.warmCfg.pct}%」这条线之前的轻组算热身，进线之后掉下来的算退让组仍记正式${on?'，热身已从折线扣掉，点「去掉热身组」可放回全部组':'，当前已把全部组计入'} · 这条线在 设置 → 📊 训练量 里可调 · 一条记录算一组 · HIIT 与爬楼不计入`;
+  const foot = week
+    ? `按周统计：周一到周日算一格，练三休一再练三正好铺满一周（如果你的轮回没卡在周一起点，分界会和轮回错开几周，看整体高低不受影响）。区间共 ${all} 组记录，其中 ${warmN} 组判为热身 · ${warmRule} · 本周（${cur.range}）只过了 ${doneDays} 天，累计 ${volDaySets(cur.e)} 组，还没走完画成空心点，下面「完整训练周数 / 平均 / 最多」三张卡不把本周算进去 · 点图中任意一周跳到日历那个月看逐日`
+    : `区间共 ${all} 组记录，其中 ${warmN} 组判为热身：${warmRule} · 只有 #健身日记/部位 标签、没有记录的日子按每部位 1 组估算，图上画成空心点 · 点击图中任意一天查看当天记录，被判热身的组会单独标出`;
+  return `<div class="card">
+    <div class="hm-head">
+      <div class="hm-title">最近 ${week?volWeeks+' 周':volDays+' 天'} · 每${week?'周':'天'}${on?'正式':'总'}组数</div>
+      <div class="hm-nav">${(week?[4,8,26]:[7,30,90]).map(rangeBtn).join('')}</div>
+    </div>
+    <div class="mode-toggle" style="margin:8px 0 10px">
+      <button class="${week?'':'on'}" onclick="setVolUnit('day')">📊 按天</button>
+      <button class="${week?'on':''}" onclick="setVolUnit('week')">🗓 按周</button>
+    </div>
+    <div class="hm-legend">
+      ${VOL_LINE_KEYS.filter(p=>volParts.includes(p)).map(p=>`<span><span class="hm-dot" style="background:${VOL_PART_COLORS[p]}"></span>${volLineName(p)}</span>`).join('')}
+      <span class="hm-hint">${volParts.length?'':'一条线都没选，点下面的 chip'}</span>
+    </div>
+    <div class="chips" style="margin-bottom:10px">${VOL_LINE_KEYS.map(partChip).join('')}<span class="chip${on?' on':''}" style="padding:6px 13px;font-size:13px" onclick="toggleVolWarm()">去掉热身组</span></div>
+    <div class="vol-chart" id="vol-chart"></div>
+    <div class="hm-stats">
+      ${stats.map(v=>`<div class="hm-stat"><b>${v[0]}</b><span>${v[1]}</span></div>`).join('')}
+    </div>
+    <div class="vol-foot">${foot}</div>
+  </div>`;
+}
+
+/* 用容器真实像素宽画 SVG：折线 + 面积 + 逐日点击热区 */
+function drawVolChart(){
+  const host = $('vol-chart'); if(!host) return;
+  if(!volResizeBound){
+    volResizeBound = true;
+    window.addEventListener('resize', ()=>{ if(hmView==='volume' && state.tab==='heatmap') drawVolChart(); });
+  }
+  const week = volUnit==='week';
+  const w = volRows(buildVolumeMap(splitWarmups()));
+  const series = VOL_LINE_KEYS.filter(p=>volParts.includes(p))
+    .map(p=>({ name:volLineName(p), color:VOL_PART_COLORS[p]||'#888', get:volLineGet(p), tot:p==='总' }));
+  const totSi = series.findIndex(s=>s.tot);
+  const values = series.map(s=>w.map(x=>s.get(x.e)));
+  const maxV = values.reduce((m,arr)=>Math.max(m, arr.reduce((a,b)=>Math.max(a,b), 0)), 0);
+  const axis = volAxis(maxV);
+  const W = Math.max(240, host.clientWidth || 320), H = 200;
+  const pl = 28, pr = 8, pt = 10, pb = 22;
+  const plotW = W-pl-pr, plotH = H-pt-pb, base = pt+plotH;
+  const n = w.length;
+  const X = i => n<2 ? pl+plotW/2 : pl + plotW*i/(n-1);
+  const Y = v => pt + plotH*(1 - v/axis.top);
+  const line = arr => arr.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+  const every = Math.max(1, Math.ceil(n/6));
+  const showDots = n <= 45;   // 90 天窗口点位太密，只画折线
+
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  s += `<defs><linearGradient id="volFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4fc3f7" stop-opacity=".34"/><stop offset="1" stop-color="#4fc3f7" stop-opacity="0"/>
+    </linearGradient></defs>`;
+  for(let t=0; t<=axis.top; t+=axis.step){
+    s += `<line x1="${pl}" y1="${Y(t).toFixed(1)}" x2="${W-pr}" y2="${Y(t).toFixed(1)}" stroke="${t?'#2a2a2a':'#3a3a3a'}" stroke-width="1"/>`;
+    s += `<text x="${pl-5}" y="${(Y(t)+3).toFixed(1)}" text-anchor="end" font-size="10" fill="#8a8a8a">${t}</text>`;
+  }
+  if(totSi>=0) s += `<path d="${line(values[totSi])} L${X(n-1).toFixed(1)} ${base} L${X(0).toFixed(1)} ${base} Z" fill="url(#volFill)"/>`;
+  series.forEach((sr,si)=>{
+    s += `<path d="${line(values[si])}" fill="none" stroke="${sr.color}" stroke-width="${sr.tot?2:1.6}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+  if(showDots && totSi>=0) w.forEach((d,i)=>{
+    const e = d.e, v = volDaySets(e); if(!v) return;
+    s += `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.8" fill="${(e.approx||e.partial)?'none':'#f0f0f0'}" stroke="#f0f0f0" stroke-width="1.4"/>`;
+  });
+  if(showDots) series.forEach((sr,si)=>{
+    if(sr.tot) return;
+    const arr = values[si];
+    arr.forEach((v,i)=>{ if(!v) return; s += `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.2" fill="${sr.color}"/>`; });
+  });
+  w.forEach((d,i)=>{ if(i%every && i!==n-1) return; s += `<text x="${X(i).toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="10" fill="#8a8a8a">${d.label}</text>`; });
+  const colW = plotW/Math.max(1, n-1);
+  w.forEach((d,i)=>{
+    const x = Math.min(Math.max(pl, X(i)-colW/2), W-pr-colW);
+    const warmN = d.e ? (d.e.total - d.e.work) : 0;
+    const v = volDaySets(d.e);
+    const tip = week ? `${d.range} · ${v} 组${d.e&&d.e.partial?'（本周进行中）':''}${warmN? ' · 热身 '+warmN+'':''}`
+                     : `${d.key} · ${v} 组${warmN? '（热身组 '+warmN+'）':''}`;
+    const act = week ? `hmShowWeek('${d.key}')` : `hmShowDay('${d.key}')`;
+    s += `<rect class="vol-hit" x="${x.toFixed(1)}" y="${pt}" width="${colW.toFixed(1)}" height="${plotH}" onclick="${act}"><title>${tip}</title></rect>`;
+  });
+  s += '</svg>';
+  host.innerHTML = s;
+}
+/* 点一周 → 跳到日历视图里那一周所在的月份 */
+function hmShowWeek(key){
+  const d = new Date(key+'T00:00:00');
+  hmMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+  hmView = 'cal';
+  renderHeatmap();
 }
 
 /* ============ 原生桥接（安卓 App 强提醒）============
