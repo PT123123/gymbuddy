@@ -18,6 +18,9 @@ build:
 install:
     set -euo pipefail; SRC="{{source_dir()}}"; SRC="${SRC//\\//}"; APK="${SRC}/app/build/outputs/apk/debug/app-debug.apk"; if [ ! -f "${APK}" ]; then echo "❌ 未找到 APK，请先运行 just build"; exit 1; fi; echo "📲 安装 ${APK} ..."; adb install -r "${APK}"
 
+# 把 release APK 发布到 lanpub
+publish:
+    lanpub add app/build/outputs/apk/release/app-release.apk
 
 # Clean build outputs
 clean:
