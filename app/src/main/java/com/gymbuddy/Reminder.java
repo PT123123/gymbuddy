@@ -36,9 +36,14 @@ public final class Reminder {
     private static final String KEY_SOUND = "alarm_sound_mode";
     private static final String KEY_SOUND_TYPE = "alarm_sound_type_"; // + type
 
-    /** 双通道（前台服务 + 系统闹钟兜底）可能同时到点，30 秒内只提醒一次 */
+    /** 一次到点有三条路径投递同一个事件：前台服务 Handler、页面轮询、系统兜底闹钟。
+     *  去重按「回合标识」= 倒计时结束时刻，而不是时间窗：同一 endAt 只提醒一次，新一轮自带新的
+     *  endAt，所以既不会被上一轮的标记误吞，也不会因登记新一轮而清掉标记、放过后到的重复投递。
+     *  标记落盘：进程被 ROM 杀掉后 sLastFireAt 归零，兜底闹钟的迟到补投仍能认出是已提醒过的回合。 */
+    private static final Object FIRE_GUARD = new Object();
+    private static final String KEY_FIRED_ROUND = "fired_round_end_at";
     private static volatile long sLastFireAt = 0L;
-    private static final long DEDUP_MS = 30_000L;
+    private static final long SHORT_DEDUP_MS = 3_000L; // 无回合标识的提醒（训练完成等）只能用短窗兜底
 
     private Reminder() {}
 
@@ -64,27 +69,42 @@ public final class Reminder {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_SOUND_TYPE + type, mode).apply();
     }
 
-    /** 新一轮倒计时开始时调用，清除上一轮的去重标记 */
-    public static void resetDedup() {
-        sLastFireAt = 0L;
-    }
-
-    public static void fire(Context ctx, int restSeconds, boolean isTest) {
-        fire(ctx, restSeconds, isTest, 0);
-    }
-
-    public static void fire(Context ctx, int restSeconds, boolean isTest, int soundType) {
-        long now = System.currentTimeMillis();
-        if (!isTest && now - sLastFireAt < DEDUP_MS) {
-            Log.i(TAG, "skip duplicate fire");
-            return;
+    /** @param roundEndAt 本次倒计时的结束时刻（毫秒），同值只提醒一次；0 表示无回合标识，走短窗兜底
+     *  @return true = 真的提醒了，false = 被去重拦下 */
+    public static boolean fire(Context ctx, int restSeconds, boolean isTest, int soundType, long roundEndAt) {
+        synchronized (FIRE_GUARD) {
+            long now = System.currentTimeMillis();
+            if (!isTest) {
+                if (roundEndAt != 0L && roundEndAt == firedRound(ctx)) {
+                    Log.i(TAG, "skip duplicate fire for round " + roundEndAt);
+                    return false;
+                }
+                if (roundEndAt == 0L && now - sLastFireAt < SHORT_DEDUP_MS) {
+                    Log.i(TAG, "skip fire: within short dedup window");
+                    return false;
+                }
+                sLastFireAt = now;
+                if (roundEndAt != 0L) markRoundFired(ctx, roundEndAt);
+            }
+            ensureChannel(ctx);
+            startAlarmSound(ctx, soundType);
+            showLockScreen(ctx, restSeconds, isTest);
+            startVibrate(ctx);
+            acquireWakeLock(ctx);
+            return true;
         }
-        sLastFireAt = now;
-        ensureChannel(ctx);
-        startAlarmSound(ctx, soundType);
-        showLockScreen(ctx, restSeconds, isTest);
-        startVibrate(ctx);
-        acquireWakeLock(ctx);
+    }
+
+    private static long firedRound(Context ctx) {
+        try { return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(KEY_FIRED_ROUND, 0L); }
+        catch (Throwable t) { return 0L; }
+    }
+
+    private static void markRoundFired(Context ctx, long roundEndAt) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putLong(KEY_FIRED_ROUND, roundEndAt).apply();
+        } catch (Throwable ignored) {}
     }
 
     public static void dismiss(Context ctx) {

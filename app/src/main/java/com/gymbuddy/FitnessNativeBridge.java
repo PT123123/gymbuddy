@@ -99,9 +99,10 @@ public class FitnessNativeBridge {
         final int restSeconds = parseRest(json);
         final boolean isTest = parseTest(json);
         final int soundType = parseSoundType(json);
+        final long endAt = parseEndAt(json);
         runOnUi(() -> {
-            Reminder.fire(app, restSeconds, isTest, soundType); // 强提醒（弹窗 + 声音 + 震动 + 唤醒）
-            tryStartOverlay();                       // 可选：悬浮窗
+            // 强提醒（弹窗 + 声音 + 震动 + 唤醒）；同一回合已被前台服务/闹钟提醒过则整条跳过，连悬浮窗也不再弹
+            if (Reminder.fire(app, restSeconds, isTest, soundType, endAt)) tryStartOverlay();
         });
     }
 
@@ -393,6 +394,12 @@ public class FitnessNativeBridge {
     private int parseSoundType(String json) {
         try { if (json != null && !json.isEmpty()) return new JSONObject(json).optInt("soundType", 0); } catch (Throwable ignored) {}
         return 0;
+    }
+
+    /** 本轮倒计时的结束时刻（毫秒）= 去重用的回合标识；缺省 0 表示无回合（训练完成类提醒） */
+    private long parseEndAt(String json) {
+        try { if (json != null && !json.isEmpty()) return new JSONObject(json).optLong("endAt", 0L); } catch (Throwable ignored) {}
+        return 0L;
     }
 
     private void runOnUi(Runnable r) { new Handler(Looper.getMainLooper()).post(r); }

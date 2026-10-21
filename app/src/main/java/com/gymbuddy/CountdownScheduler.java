@@ -14,6 +14,7 @@ public final class CountdownScheduler {
 
     public static final String ACTION_FIRE = "com.gymbuddy.COUNTDOWN_FIRE";
     public static final String EXTRA_REST = "rest";
+    public static final String EXTRA_END = "end";   // 回合标识：与 Reminder 去重用的结束时刻一致
     private static final int REQ_CODE = 2001; // 同一时刻只会有一个倒计时
 
     private CountdownScheduler() {}
@@ -22,7 +23,7 @@ public final class CountdownScheduler {
     public static void schedule(Context ctx, int restSeconds, long endAtMillis) {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
-        PendingIntent pi = pending(ctx);
+        PendingIntent pi = pending(ctx, restSeconds, endAtMillis);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
                 // Android 12+ 无精确闹钟权限时降级为不精确（可能延迟，但 USE_EXACT_ALARM 已声明则不会走到这里）
@@ -41,11 +42,14 @@ public final class CountdownScheduler {
     public static void cancel(Context ctx) {
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;
-        am.cancel(pending(ctx));
+        am.cancel(pending(ctx, 0, 0L));
     }
 
-    private static PendingIntent pending(Context ctx) {
-        Intent i = new Intent(ctx, CountdownReceiver.class).setAction(ACTION_FIRE);
+    /** PendingIntent 的身份只看 action/组件等，不看 extras，所以 cancel 用空 extras 也能命中同一个闹钟 */
+    private static PendingIntent pending(Context ctx, int restSeconds, long endAtMillis) {
+        Intent i = new Intent(ctx, CountdownReceiver.class).setAction(ACTION_FIRE)
+                .putExtra(EXTRA_REST, restSeconds)
+                .putExtra(EXTRA_END, endAtMillis);
         return PendingIntent.getBroadcast(ctx, REQ_CODE, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }

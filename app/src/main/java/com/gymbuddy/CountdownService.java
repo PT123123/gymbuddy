@@ -37,7 +37,6 @@ public class CountdownService extends Service {
 
     /** 开始倒计时保活（JS 桥接调用）。restSeconds 秒后到点触发提醒。 */
     public static void start(Context ctx, int restSeconds, long endAtMillis) {
-        Reminder.resetDedup(); // 新一轮倒计时：清除上一轮的去重标记，避免误吞本次提醒
         Intent i = new Intent(ctx, CountdownService.class)
                 .putExtra(EXTRA_REST, restSeconds)
                 .putExtra(EXTRA_END, endAtMillis);
@@ -78,13 +77,14 @@ public class CountdownService extends Service {
         return START_NOT_STICKY;
     }
 
-    /** 到点：撤掉兜底闹钟 → 停止服务 → 触发强提醒（弹窗 + 门铃/系统闹铃音 + 震动 + 亮屏） */
+    /** 到点：撤掉兜底闹钟 → 停止服务 → 触发强提醒（弹窗 + 门铃/系统闹铃音 + 震动 + 亮屏）。
+     *  endAtMillis 即本轮回合标识，页面轮询/兜底闹钟对同一轮到点时会被 Reminder 去重拦下。 */
     private void fire() {
         int rest = (int) Math.max(0, (endAtMillis - System.currentTimeMillis() + 500) / 1000);
         CountdownScheduler.cancel(this);
         stopForeground(true);
         stopSelf();
-        Reminder.fire(this, rest, false);
+        Reminder.fire(this, rest, false, 0, endAtMillis);
     }
 
     /** 常驻通知倒计时文案每秒刷新 */

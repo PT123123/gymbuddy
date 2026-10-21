@@ -14,8 +14,9 @@ public class CountdownReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (intent == null || !CountdownScheduler.ACTION_FIRE.equals(intent.getAction())) return;
         final int rest = intent.getIntExtra(CountdownScheduler.EXTRA_REST, 0);
+        final long endAt = intent.getLongExtra(CountdownScheduler.EXTRA_END, 0L);
         // 若 WebView 进程还活着，让页面同步成「已归零」（idempotent，前台路径已处理则无操作）
         FitnessApp.evalJs("onNativeCountdownFinish(" + rest + ")");
-        Reminder.fire(context, rest, false);
+        Reminder.fire(context, rest, false, 0, endAt);
     }
 }
