@@ -20,8 +20,8 @@ android {
         applicationId "com.gymbuddy"
         minSdk 26                 // Android 8.0+（悬浮窗/锁屏弹窗所需 API 均覆盖）
         targetSdk 34
-        versionCode 148           // 与版本号 1.2.28 对应（147 在 10-20 已入过 lanpub 仓，同一个号不能代表两个不同的包）
-        versionName "1.2.28"
+        versionCode 149           // 与版本号 1.2.29 对应
+        versionName "1.2.29"
     }
 
     buildTypes {

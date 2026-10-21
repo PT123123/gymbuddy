@@ -275,6 +275,15 @@
   .hiit-progress .fill.setRest{ background:#ffa726; }
   .stair-floors-big{ font-size:56px; font-weight:700; text-align:center; color:var(--acc); margin:4px 0; font-variant-numeric:tabular-nums; }
   .stair-kcal{ text-align:center; color:var(--sub); font-size:14px; margin-bottom:10px; }
+  .stair-card-title{ font-size:15px; font-weight:700; margin:0 0 10px; display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .stair-card-title .sc-note{ color:var(--sub); font-size:13px; font-weight:400; }
+  .stair-live{ text-align:center; color:var(--sub); font-size:14px; margin-bottom:6px; font-variant-numeric:tabular-nums; }
+  .stair-live b{ color:var(--acc); }
+  .stair-ticks{ max-height:230px; overflow-y:auto; margin-top:6px; }
+  .tick-item{ display:flex; gap:10px; align-items:center; padding:8px 2px; border-bottom:1px dashed var(--line); font-size:14px; }
+  .tick-item .tk-time{ color:var(--sub); min-width:44px; font-variant-numeric:tabular-nums; }
+  .tick-item .tk-inc{ color:var(--acc); font-weight:700; }
+  .tick-item .tk-total{ color:var(--sub); margin-left:auto; font-variant-numeric:tabular-nums; }
   .floor-btns{ display:flex; gap:8px; margin:10px 0; }
   .floor-btns button{ flex:1; padding:14px 6px; border:1px solid var(--line); background:var(--card2); color:var(--acc); border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; }
   .floor-btns button:active{ background:var(--chip); }
@@ -1233,9 +1242,8 @@ const SOUND_SCENES = [
   {k:3, name:'HIIT 组间休息结束'},
   {k:4, name:'HIIT 训练完成'},
   {k:5, name:'爬楼休息结束'},
-  {k:6, name:'爬楼完成'},
 ];
-let soundCfg = {0:0,1:0,2:0,3:0,4:0,5:0,6:0};
+let soundCfg = {0:0,1:0,2:0,3:0,4:0,5:0};
 let soundTestScene = 0;
 function sanitizeExportCfg(c){
   c=c||{};
@@ -1299,10 +1307,11 @@ function renderExportContent(){
       <p style="color:var(--sub);font-size:12px;margin:8px 0 0">结束训练后：今天的记录锁定编辑（要改去「🗂 结构化数据」），训练页顶部显示今日总结。</p>
     </div>`;
 }
-/* 结束训练：草稿组转入历史 → 导出「今天的全部结构化记录 + 当日笔记」到笔记页 → 清空计时器/草稿 → 锁定今天编辑 */
+/* 结束训练：草稿组转入历史 → 导出「今天的全部结构化记录 + 当日爬楼 + 当日笔记」到笔记页 → 清空计时器/草稿 → 锁定今天编辑 */
 function endTraining(){
   const todayRecs = state.records.filter(r=>r && recordTrainDate(r)===trainToday());
-  if(state.groups.length===0 && todayRecs.length===0){ alert('今天还没有任何记录'); return; }
+  const todayStairs = stair.sessions.filter(s=>s && s.date===trainToday());
+  if(state.groups.length===0 && todayRecs.length===0 && todayStairs.length===0){ alert('今天还没有任何记录'); return; }
   /* 重复导出检测：今天（训练日）已导出过的训练记录笔记 */
   const reTR=/^🏋️ 训练记录 ·/;
   const dupNotes = notes.filter(n=> reTR.test(String(n&&n.content||'')) && trainDateOfTs(n.createdAt||0)===trainToday());
@@ -1324,11 +1333,19 @@ function endTraining(){
   const lastTs  = times.length? parseHMToTs(times[times.length-1]) : 0;
   const durMs = (firstTs && lastTs && lastTs>=firstTs) ? lastTs-firstTs : 0;
   const lines=[];
-  lines.push('首组：' + (times[0]||'--'));
-  lines.push('末组：' + (times[times.length-1]||'--'));
-  lines.push('训练时长：' + fmt(durMs));
-  lines.push('组数：' + all.length + ' 组');
-  all.forEach((r,i)=> lines.push((i+1) + '. ' + (r.t? r.t+' ' : '') + fmtRecordLine(r)));   // 每行带该组时间：笔记自含精确时间，后续解析无需倒推
+  if(all.length){
+    lines.push('首组：' + (times[0]||'--'));
+    lines.push('末组：' + (times[times.length-1]||'--'));
+    lines.push('训练时长：' + fmt(durMs));
+    lines.push('组数：' + all.length + ' 组');
+    all.forEach((r,i)=> lines.push((i+1) + '. ' + (r.t? r.t+' ' : '') + fmtRecordLine(r)));   // 每行带该组时间：笔记自含精确时间，后续解析无需倒推
+  }
+  /* 当日爬楼：stair.sessions 独立于结构化记录，结束一整天时一并写进笔记 */
+  if(todayStairs.length){
+    lines.push('―'.repeat(14) + ' 🧗 当日爬楼 ' + '―'.repeat(14));
+    [...todayStairs].sort((a,b)=> String(a.t||'').localeCompare(String(b.t||'')))
+      .forEach((r,i)=> lines.push((i+1) + '. ' + (r.t? r.t+' ' : '') + fmt(r.duration) + ' · ' + r.floors + ' 层 · ' + r.laps + ' 趟 · 约 ' + r.kcal + ' kcal' + (r.rest? ' · 休息 '+fmt(r.rest) : '')));
+  }
   /* 当日笔记区块：训练日新建/编辑过的、非训练记录类笔记（与凌晨4点截止同口径） */
   const dayNotes = notes.filter(n=>{
     const c=String(n && n.content||'');
@@ -1353,7 +1370,7 @@ function endTraining(){
   state.endedDate = trainToday();   // 锁定今天的记录编辑，顶部显示总结卡片
   persist();
   renderTrain();
-  alert(`已导出（${all.length} 条记录${dayNotes.length? ' + '+dayNotes.length+' 条笔记':''}）并结束今天的训练 ✔`);
+  alert(`已导出（${all.length} 条记录${todayStairs.length? ' + '+todayStairs.length+' 次爬楼':''}${dayNotes.length? ' + '+dayNotes.length+' 条笔记':''}）并结束今天的训练 ✔`);
   switchTab('notes');
 }
 function copyExport(){ const t=$('export-text').textContent;
@@ -1632,7 +1649,9 @@ let stair = {
   tab:'record',
   running:false, finished:false, elapsed:0, startedAt:0, timerId:null,
   floors:0, weight:65,
-  laps:[],                // {floors, dur, t}
+  laps:[],                // {floors, dur, t, rest}  rest=趟后实际休息秒数（记趟时结算）
+  ticks:[],               // 实时楼层记录：每次点 +N/手动改层落一条 {t, inc, total}
+  restLapIdx:-1,          // 当前休息归属的趟下标
   lapStartAt:0, lapFloors:0,
   restRunning:false, restDone:false, restCountdownDone:false, restLeft:30, restTotal:30, restEndAt:0, restSegStart:0, restElapsed:0, restTimerId:null,
   restAcc:0,              // 本次训练累计休息时长(ms)，用于「总时长/今日累计」拆分展示
@@ -1643,7 +1662,7 @@ function loadStair(){ try{ const d=JSON.parse(localStorage.getItem(STAIR_LS)||'{
   const w=parseInt(d.weight,10); if(w>20&&w<300) stair.weight=w;
   const r=parseInt(d.restLeft,10); if(r>0&&r<=3600) stair.restLeft=r;
   stair.running=false; stair.finished=false; stair.elapsed=0; stair.floors=0;
-  stair.laps=[]; stair.lapStartAt=0; stair.lapFloors=0;
+  stair.laps=[]; stair.ticks=[]; stair.restLapIdx=-1; stair.lapStartAt=0; stair.lapFloors=0;
   stair.restRunning=false; stair.restDone=false; stair.restTimerId=null;
 }catch(e){} }
 function persistStair(){ localStorage.setItem(STAIR_LS, JSON.stringify({sessions:stair.sessions, weight:stair.weight, restLeft:stair.restLeft})); syncDataFile(); scheduleCloudBackup(); }
@@ -1673,7 +1692,7 @@ function stairReset(){
   stair.running=false; stair.finished=false; clearInterval(stair.timerId);
   if(stair.restTimerId) clearInterval(stair.restTimerId);
   stair.elapsed=0; stair.startedAt=0; stair.floors=0;
-  stair.laps=[]; stair.lapStartAt=0; stair.lapFloors=0;
+  stair.laps=[]; stair.ticks=[]; stair.restLapIdx=-1; stair.lapStartAt=0; stair.lapFloors=0;
   stair.restAcc=0; stair.restSegStart=0; stair.restElapsed=0;
   stair.restRunning=false; stair.restDone=false; stair.restCountdownDone=false; stair.restLeft=stair.restTotal;
   Native.cancelCountdown();
@@ -1688,55 +1707,71 @@ function stairPaint(){
   const t=$('stair-time'); if(t) t.textContent=fmt(stair.elapsed);
   const f=$('stair-floors'); if(f) f.textContent=stair.floors;
   const k=$('stair-kcal'); if(k) k.textContent=stairKcal();
+  const lv=$('stair-live'); if(lv) lv.innerHTML=`本趟已 <b>+${stair.lapFloors}</b> 层 · 累计 <b>${stair.floors}</b> 层`;
   const restNow = stair.restAcc + (stair.restRunning? (Date.now()-stair.restSegStart) : 0);
-  const s=$('stair-sub'); if(s) s.textContent=`已爬 ${stair.floors} 层 · ${stair.laps.length} 趟 · 总时长 ${fmt(stair.elapsed)}（休息 ${fmt(restNow)}）`;
+  const s=$('stair-sub'); if(s) s.textContent=`计时 ${fmt(stair.elapsed)} · 其中休息 ${fmt(restNow)} · ${stair.laps.length} 趟`;
+}
+function stairLogTick(inc, manual){
+  stair.ticks.unshift({ t:nowTime(), inc, total:stair.floors, manual:!!manual });
+  if(stair.ticks.length>500) stair.ticks.length=500;   // 上限只防误按刷屏，历史 session 里另存 slice
+  renderStair();
 }
 function stairAddFloors(n){
   if(stair.restRunning) stairFinalizeRest();   // 开始下一趟 = 结束上一组休息（休息时长计入统计）
   if(!stair.running) stairStart();
   stair.floors += n;
   stair.lapFloors += n;
-  stairPaint();
+  stairLogTick(n);
 }
 function stairSetFloors(v){
   const f=parseInt(v,10); if(isNaN(f)||f<0) return;
+  const diff=f-stair.floors;
+  if(diff===0) return;
   if(stair.restRunning) stairFinalizeRest();
   if(!stair.running && f>0) stairStart();
   stair.floors = f;
-  stairPaint();
+  stair.lapFloors = Math.max(0, stair.lapFloors + diff);   // 手动改的是总层数，增量归属当前趟；下调视为修正本趟
+  if(diff>0){ stairLogTick(diff, true); } else { renderStair(); }   // 往回改是修正值，不另记增量
 }
 function stairRecordLap(){
   if(stair.lapFloors<=0){ alert('这趟还没有爬楼层哦'); return; }
   const dur = Math.max(0, Math.round((stair.elapsed - stair.lapStartAt)/1000));
-  stair.laps.push({ floors:stair.lapFloors, dur:dur, t:nowTime() });
+  stair.laps.push({ floors:stair.lapFloors, dur:dur, t:nowTime(), rest:0 });
   stair.lapStartAt = stair.elapsed;
   stair.lapFloors = 0;
-  stairStartRest(stair.restLeft||30);   // 结束一组后自动开启休息（倒计时+正计时常驻），直到开始下一组
+  stairStartRest(stair.restLeft||30, stair.laps.length-1);   // 结束一组后自动开启休息，归这趟所有
 }
 function stairFinish(){
   if(stair.restRunning) stairFinalizeRest();
   if(stair.lapFloors>0){
     const dur = Math.max(0, Math.round((stair.elapsed - stair.lapStartAt)/1000));
-    stair.laps.push({ floors:stair.lapFloors, dur:dur, t:nowTime() });
+    stair.laps.push({ floors:stair.lapFloors, dur:dur, t:nowTime(), rest:0 });
   }
   stair.running=false; stair.finished=true; clearInterval(stair.timerId);
   stair.elapsed = Date.now() - stair.startedAt;
   stair.sessions.unshift({
     date:trainToday(), t:nowTime(), duration:stair.elapsed,
     floors:stair.floors, laps:stair.laps.length, kcal:stairKcal(), rest:stair.restAcc,
+    lapList:stair.laps.map(l=>({t:l.t,floors:l.floors,dur:l.dur,rest:l.rest||0})),
+    ticks:stair.ticks.map(x=>({t:x.t,inc:x.inc,total:x.total})).reverse(),
   });
   persistStair();
-  Native.fire({ restSeconds:0, label:'爬楼完成', at:nowTime(), soundType:6 });
   renderStair();
+}
+/* 结束一整天：本次爬楼还没收口就先落一条 session，再走训练页的当日收尾（转历史/导笔记/锁当天） */
+function stairEndDay(){
+  if(!stair.finished && (stair.running || stair.floors>0 || stair.laps.length>0 || stair.elapsed>0)) stairFinish();
+  endTraining();
 }
 
 /* —— 组间休息倒计时 —— */
-function stairStartRest(sec){
+function stairStartRest(sec, lapIdx){
   if(stair.restTimerId) clearInterval(stair.restTimerId);
   Native.cancelCountdown();
   stair.restTotal=sec; stair.restLeft=sec; stair.restRunning=true; stair.restDone=false; stair.restCountdownDone=false;
   stair.restEndAt = Date.now()+sec*1000;
   stair.restSegStart = Date.now(); stair.restElapsed=0;
+  stair.restLapIdx = (lapIdx==null? stair.laps.length-1 : lapIdx);   // 手动开的休息默认归最近一趟
   Native.scheduleCountdown(sec, stair.restEndAt);
   stair.restTimerId=setInterval(stairRestTick, 200);
   renderStair();
@@ -1755,8 +1790,13 @@ function stairRestTick(){
   }
 }
 function stairFinalizeRest(){
-  if(stair.restSegStart){ stair.restAcc += Date.now()-stair.restSegStart; stair.restSegStart=0; stair.restElapsed=0; }
-  stair.restRunning=false; stair.restDone=false; stair.restCountdownDone=false;
+  if(stair.restSegStart){
+    const ms = Date.now()-stair.restSegStart;
+    stair.restAcc += ms; stair.restSegStart=0; stair.restElapsed=0;
+    const l = stair.laps[stair.restLapIdx];
+    if(l) l.rest = (l.rest||0) + Math.round(ms/1000);   // 这段休息落回它所属的那趟
+  }
+  stair.restRunning=false; stair.restDone=false; stair.restCountdownDone=false; stair.restLapIdx=-1;
   if(stair.restTimerId){ clearInterval(stair.restTimerId); stair.restTimerId=null; }
   Native.cancelCountdown();
 }
@@ -1822,12 +1862,25 @@ function renderStairRecordContent(){
         <button class="btn btn-primary" onclick="stairExportToNote()">📝 导出到笔记</button>
         <button class="btn btn-ghost" onclick="stairReset()">🔄 再来一次</button>
       </div>
+      <button class="btn btn-green" style="width:100%;margin-top:8px" onclick="stairEndDay()">🏁 结束一整天</button>
+      <p style="color:var(--sub);font-size:12px;margin:8px 0 0">结束训练后：今天的记录锁定编辑（要改去「🗂 结构化数据」），今日爬楼一并导出到笔记。</p>
     </div>`;
   }
 
+  // —— 计层 · 实时记录（每按一次 +楼层 落一条；「记一趟」结算本趟增量/累计/用时）——
+  let cum=0;
+  const lapRows = s.laps.map((l,i)=>{
+    cum += l.floors;
+    return `<div class="hist-item">
+        <span class="h-time">${l.t}</span>
+        <span class="h-body"><span class="h-tag">第${i+1}趟</span>+${l.floors} 层 · 累计 ${cum} 层 · 用时 ${fmt(l.dur*1000)}${l.rest?` · 休息 ${l.rest}秒`:''}</span>
+      </div>`;
+  }).join('');
+  const tickRows = s.ticks.map(x=>`<div class="tick-item"><span class="tk-time">${x.t}</span><span class="tk-inc">${x.manual?'手动 +':'+'}${x.inc} 层</span><span class="tk-total">累计 ${x.total} 层</span></div>`).join('')
+    || `<div style="color:var(--sub);font-size:13px;text-align:center;padding:10px 0">还没有记录：点「+楼层」，每按一次实时落一条</div>`;
   let html=`<div class="card">
-    <div class="time-display" id="stair-time">${fmt(s.elapsed)}</div>
-    <div class="time-sub" id="stair-sub">已爬 ${s.floors} 层 · ${s.laps.length} 趟 · ${stairKcal()} kcal</div>
+    <div class="stair-card-title"><span>🪜 计层 · 实时记录</span><span class="sc-note">每按一次 +楼层 就记一条</span></div>
+    <div class="stair-live" id="stair-live">本趟已 <b>+${s.lapFloors}</b> 层 · 累计 <b>${s.floors}</b> 层</div>
     <div class="stair-floors-big" id="stair-floors">${s.floors}</div>
     <div class="stair-kcal" id="stair-kcal">约 ${stairKcal()} kcal（体重 ${s.weight}kg）</div>
     <div class="floor-btns">
@@ -1836,14 +1889,25 @@ function renderStairRecordContent(){
       <button onclick="stairAddFloors(10)">+10 层</button>
     </div>
     <input class="inline-input" type="number" min="0" placeholder="或手动输入总楼层数" value="${s.floors>0?s.floors:''}" onchange="stairSetFloors(this.value)" style="margin-bottom:10px">
+    <button class="btn btn-primary" style="width:100%" onclick="stairRecordLap()">📍 记一趟（结算本趟 · 自动开始休息）</button>
+    ${s.laps.length>0?`<div class="group-hint"><span>本次趟次（${s.laps.length} 趟）</span></div>${lapRows}`:''}
+    <div class="group-hint"><span>实时记录（${s.ticks.length} 条）</span></div>
+    <div class="stair-ticks">${tickRows}</div>
+  </div>`;
+
+  // —— 计时 · 休息（总时长走表 + 组间休息倒计时）——
+  const restNow = s.restAcc + (s.restRunning? s.restElapsed : 0);
+  html+=`<div class="card">
+    <div class="stair-card-title"><span>⏱ 计时 · 休息</span><span class="sc-note">${s.running?'进行中':(s.elapsed>0?'已暂停':'未开始')}</span></div>
+    <div class="time-display" id="stair-time">${fmt(s.elapsed)}</div>
+    <div class="time-sub" id="stair-sub">计时 ${fmt(s.elapsed)} · 其中休息 ${fmt(restNow)} · ${s.laps.length} 趟</div>
     <div class="btn-row">
       <button class="btn ${s.running?'btn-stop':'btn-primary'}" onclick="stairStart()">${s.running?'⏸ 暂停':(s.elapsed>0?'▶ 继续':'▶ 开始计时')}</button>
       <button class="btn btn-ghost" onclick="stairReset()">↺ 重置</button>
     </div>
     <div class="btn-row" style="margin-top:8px">
-      <button class="btn btn-ghost" style="padding:12px;font-size:14px" onclick="stairRecordLap()">📍 记一趟</button>
       <button class="btn btn-ghost" style="padding:12px;font-size:14px" onclick="stairStartRest(${s.restLeft||30})">☕ 休息 ${s.restLeft||30}秒</button>
-      <button class="btn btn-green" style="padding:12px;font-size:14px" onclick="stairFinish()">✓ 结束</button>
+      <button class="btn btn-green" style="padding:12px;font-size:14px" onclick="stairFinish()">✓ 结束（本次）</button>
     </div>
     <div class="dur-set" style="margin-top:10px;justify-content:flex-start">
       <span style="color:var(--sub);font-size:13px">休息时长</span>
@@ -1852,28 +1916,18 @@ function renderStairRecordContent(){
       <select onchange="setStairWeight(this.value)">${[45,50,55,60,65,70,75,80,85,90,95,100].map(w=>`<option ${s.weight==w?'selected':''}>${w}</option>`).join('')}</select> kg
     </div>
     ${stairRestBarHtml()}
+    <button class="btn btn-green" style="width:100%;margin-top:12px" onclick="stairEndDay()">🏁 结束一整天</button>
   </div>`;
-
-  // 趟次列表
-  if(s.laps.length>0){
-    html+=`<div class="group-hint"><span>本次趟次（${s.laps.length} 趟）</span></div>`;
-    s.laps.forEach((l,i)=>{
-      html+=`<div class="hist-item">
-        <span class="h-time">${l.t}</span>
-        <span class="h-body"><span class="h-tag">第${i+1}趟</span>${l.floors}层 · 用时 ${fmt(l.dur*1000)}</span>
-      </div>`;
-    });
-  }
 
   // 历史
   html+=`<div class="section-title">📋 历史记录（最近 ${Math.min(s.sessions.length,20)} 次）</div>`;
   if(s.sessions.length===0){
-    html+=`<div class="empty">开始计时后，每爬完一段点「+楼层」累计<br>爬完点「结束」自动打卡存档</div>`;
+    html+=`<div class="empty">点「+楼层」实时落记录<br>每爬完一段点「记一趟」结算并自动休息<br>收尾点「✓ 结束」存档，再「🏁 结束一整天」导出</div>`;
   } else {
     s.sessions.slice(0,20).forEach((r,i)=>{
       html+=`<div class="hist-item">
         <span class="h-time">${r.t}</span>
-        <span class="h-body"><span class="h-tag">${r.floors}层</span>${fmt(r.duration)} · ${r.laps}趟 · ${r.kcal}kcal</span>
+        <span class="h-body"><span class="h-tag">${r.floors}层</span>${fmt(r.duration)} · ${r.laps}趟 · ${r.kcal}kcal${r.rest?` · 休息 ${fmt(r.rest)}`:''}</span>
         <button class="del" onclick="stairDelSession(${i})">×</button>
       </div>`;
     });
@@ -1915,6 +1969,14 @@ function stairExportLatestToNote(){
     '趟数：'+r.laps+' 趟',
     '消耗：约 '+r.kcal+' kcal',
   ];
+  if(r.rest) lines.push('休息合计：'+fmt(r.rest));
+  if(Array.isArray(r.lapList) && r.lapList.length){
+    let cum=0;
+    lines.push('―'.repeat(14)+' 趟次明细 '+'―'.repeat(14));
+    r.lapList.forEach((l,i)=>{ cum+=l.floors;
+      lines.push((i+1)+'. '+(l.t||'')+' +'+l.floors+' 层 · 累计 '+cum+' 层 · 用时 '+fmt(l.dur*1000)+(l.rest?` · 休息 ${l.rest}秒`:''));
+    });
+  }
   const text=`🧗 爬楼记录 · ${r.date} ${r.t||''}`+'\n'+'='.repeat(30)+'\n'+lines.join('\n');
   notes.unshift({ id:uid(), content:text, pinned:false, createdAt:Date.now(), updatedAt:Date.now() });
   persistNotes();
@@ -2218,7 +2280,7 @@ function setSceneSound(type, mode){
   try{ if(window.FitnessNative && window.FitnessNative.setSoundForType) window.FitnessNative.setSoundForType(type, mode); }catch(e){}
 }
 function applySoundToAll(mode){
-  for(let t=0; t<=6; t++){
+  for(let t=0; t<=5; t++){
     soundCfg[t] = mode;
     try{ if(window.FitnessNative && window.FitnessNative.setSoundForType) window.FitnessNative.setSoundForType(t, mode); }catch(e){}
   }
@@ -3728,7 +3790,7 @@ function init(){
   refreshSidebar();
   setInterval(()=>{ updateWorkoutElapsed(); updateStairToday(); }, 1000);   // 顶部走表：训练页 + 爬楼页每秒刷新
   const sc = Native.getSoundConfig();
-  if(sc && typeof sc==='object'){ for(let t=0; t<=6; t++){ if(sc[t]!==undefined) soundCfg[t]=sc[t]; } }
+  if(sc && typeof sc==='object'){ for(let t=0; t<=5; t++){ if(sc[t]!==undefined) soundCfg[t]=sc[t]; } }
   const verEl=$('app-version');
   if(verEl) verEl.textContent = window.APP_VERSION ? 'v'+window.APP_VERSION : '';
   window.addEventListener('beforeunload', function(){ persist(); syncDataFile(true); });   // 离开页面前同步落盘（不等防抖）
